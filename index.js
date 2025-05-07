@@ -31,6 +31,7 @@ app.use("/api/prb", require("./router/problem"));
 app.use("/api/appt", require("./router/appointment"));
 app.use("/api/patient", require("./router/patient"));
 app.use("/api/patientform", require("./router/patientForm"));
+app.use("/api/dashboard", require("./router/dashboard"));
 
 const activeUsers = {};
 const userSocketMap = {};

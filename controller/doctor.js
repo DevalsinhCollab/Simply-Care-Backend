@@ -1,5 +1,5 @@
 const Doctor = require("../models/doctor");
-const User = require("../models/user");
+const PatientFormSchema = require("../models/patientform")
 
 exports.addDoctor = async (req, res) => {
   try {
@@ -62,6 +62,7 @@ exports.updateDoctor = async (req, res) => {
       name,
     }, { new: true });
 
+    await PatientFormSchema.updateMany({ "doctor._id": id }, { "doctor.name": name })
 
     return res.status(200).json({
       success: true,

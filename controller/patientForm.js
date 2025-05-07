@@ -7,6 +7,7 @@ exports.addPatientForm = async (req, res) => {
             patient,
             date,
             description,
+            payment
         } = req.body;
 
 
@@ -15,6 +16,7 @@ exports.addPatientForm = async (req, res) => {
             patient,
             date,
             description,
+            payment
         });
 
         return res.status(200).json({
@@ -70,6 +72,7 @@ exports.updatePatientForm = async (req, res) => {
             patient,
             date,
             description,
+            payment
         } = req.body;
 
         const patientData = await PatientFormSchema.findByIdAndUpdate(id, {
@@ -77,6 +80,7 @@ exports.updatePatientForm = async (req, res) => {
             patient,
             date,
             description,
+            payment
         }, { new: true });
 
 

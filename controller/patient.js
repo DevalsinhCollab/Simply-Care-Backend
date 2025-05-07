@@ -1,5 +1,5 @@
 const PatientSchema = require("../models/patient");
-const User = require("../models/user");
+const PatientFormSchema = require("../models/patientform")
 
 exports.addPatient = async (req, res) => {
     try {
@@ -85,6 +85,7 @@ exports.updatePatient = async (req, res) => {
             address
         }, { new: true });
 
+        await PatientFormSchema.updateMany({ "patient._id": id }, { "patient.name": name, "patient.email": email, "patient.phone": phone, "patient.address": address })
 
         return res.status(200).json({
             success: true,
@@ -116,29 +117,29 @@ exports.deletePatient = async (req, res) => {
 };
 
 exports.searchPatients = async (req, res) => {
-  try {
-    const { search } = req.query;
+    try {
+        const { search } = req.query;
 
-    let findObject = {};
+        let findObject = {};
 
-    if (search && search !== "") {
-      findObject = {
-        $or: [
-          { name: { $regex: search, $options: "i" } },
-          { email: { $regex: search, $options: "i" } },
-          { phone: { $regex: search, $options: "i" } },
-        ],
-      };
+        if (search && search !== "") {
+            findObject = {
+                $or: [
+                    { name: { $regex: search, $options: "i" } },
+                    { email: { $regex: search, $options: "i" } },
+                    { phone: { $regex: search, $options: "i" } },
+                ],
+            };
+        }
+
+        const patients = await PatientSchema.find(findObject)
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .lean()
+            .exec();
+
+        return res.status(200).json({ data: patients, success: true });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
     }
-
-    const patients = await PatientSchema.find(findObject)
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .lean()
-      .exec();
-
-    return res.status(200).json({ data: patients, success: true });
-  } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
 };

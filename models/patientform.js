@@ -62,6 +62,10 @@ const patientFormSchema = new mongoose.Schema(
             trim: true,
             default: null,
         },
+        payment: {
+            type: String,
+            trim: true,
+        },
     },
     {
         timestamps: true,
