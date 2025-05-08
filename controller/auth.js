@@ -6,8 +6,8 @@ const nodemailer = require("nodemailer");
 const transporter = nodemailer.createTransport({
   service: "Gmail",
   auth: {
-    user: "tarunrudakiya123@gmail.com",
-    pass: "zbqq zncs dusx ocsc",
+    user: "collabsoftech@gmail.com",
+    pass: "etgn nydn nwmo ifkc",
   },
 });
 
@@ -138,24 +138,24 @@ exports.login = async (req, res) => {
     user.keepMeLoggedIn = keepMeLoggedIn;
     await user.save();
 
-    // const mailOptions = {
-    //   from: "tarunrudakiya123@gmail.com",
-    //   to: email,
-    //   subject: "OTP",
-    //   text: `Your OTP is ${otp}`,
-    // };
+    const mailOptions = {
+      from: "collabsoftech@gmail.com",
+      to: email,
+      subject: "OTP",
+      text: `Your OTP is ${otp}`,
+    };
 
-    // const emailResponse = await new Promise((resolve, reject) => {
-    //   transporter.sendMail(mailOptions, function (err, data) {
-    //     if (err) {
-    //       // If an error occurs, reject the promise with the error message
-    //       reject(err.message);
-    //     } else {
-    //       // If email sent successfully, resolve the promise
-    //       resolve("OTP sent to your Email-Id.");
-    //     }
-    //   });
-    // });
+    const emailResponse = await new Promise((resolve, reject) => {
+      transporter.sendMail(mailOptions, function (err, data) {
+        if (err) {
+          // If an error occurs, reject the promise with the error message
+          reject(err.message);
+        } else {
+          // If email sent successfully, resolve the promise
+          resolve("OTP sent to your Email-Id.");
+        }
+      });
+    });
 
     return res.status(200).json({
       success: true,
