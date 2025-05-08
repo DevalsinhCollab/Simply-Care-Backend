@@ -24,6 +24,10 @@ connectDB();
 
 app.set("socketio", io);
 
+app.get("/", (req, res) => {
+  res.send("Server is running");
+})
+
 app.use("/api/auth", require("./router/auth"));
 app.use("/api/doc", require("./router/doctor"));
 app.use("/api/msg", require("./router/message"));
