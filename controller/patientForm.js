@@ -1,3 +1,4 @@
+const moment = require("moment");
 const PatientFormSchema = require("../models/patientform");
 
 exports.addPatientForm = async (req, res) => {
@@ -31,7 +32,7 @@ exports.addPatientForm = async (req, res) => {
 
 exports.getPatientsForm = async (req, res) => {
     try {
-        const { page = 0, pageSize = 10, search } = req.query;
+        const { page = 0, pageSize = 10, search, patient, doctor, startDate, endDate } = req.query;
 
         let findObject = {}
 
@@ -47,6 +48,35 @@ exports.getPatientsForm = async (req, res) => {
                 ],
             };
         }
+
+        if (patient && patient !== "") {
+            findObject = {
+                ...findObject,
+                "patient._id": patient
+            };
+        }
+
+        if (doctor && doctor !== "") {
+            findObject = {
+                ...findObject,
+                "doctor._id": doctor
+            };
+        }
+
+        if (startDate || endDate) {
+            findObject.date = {};
+          
+            if (startDate && startDate !== "null") {
+              const parsedStart = moment(startDate, "DD/MM/YYYY").startOf('day').toDate();
+              findObject.date.$gte = parsedStart;
+            }
+          
+            if (endDate && endDate !== "null") {
+              const parsedEnd = moment(endDate, "DD/MM/YYYY").endOf('day').toDate();
+              findObject.date.$lte = parsedEnd;
+            }
+          }
+          
 
         const skip = page * pageSize;
         const totalCount = await PatientFormSchema.countDocuments(findObject);
