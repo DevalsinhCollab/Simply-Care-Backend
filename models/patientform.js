@@ -66,6 +66,11 @@ const patientFormSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        treatment: {
+            type: String,
+            trim: true,
+            default: null,
+        },
     },
     {
         timestamps: true,

@@ -7,22 +7,7 @@ const mongoose = require("mongoose");
 
 exports.addPatientForm = async (req, res) => {
     try {
-        const {
-            doctor,
-            patient,
-            date,
-            description,
-            payment
-        } = req.body;
-
-
-        const patientData = await PatientFormSchema.create({
-            doctor,
-            patient,
-            date,
-            description,
-            payment
-        });
+        const patientData = await PatientFormSchema.create(req.body);
 
         return res.status(200).json({
             success: true,
@@ -49,6 +34,7 @@ exports.getPatientsForm = async (req, res) => {
                     { "patient.email": { $regex: search, $options: "i" } },
                     { "patient.phone": { $regex: search, $options: "i" } },
                     { "patient.address": { $regex: search, $options: "i" } },
+                    { treatment: { $regex: search, $options: "i" } },
                 ],
             };
         }
@@ -101,22 +87,7 @@ exports.updatePatientForm = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const {
-            doctor,
-            patient,
-            date,
-            description,
-            payment
-        } = req.body;
-
-        const patientData = await PatientFormSchema.findByIdAndUpdate(id, {
-            doctor,
-            patient,
-            date,
-            description,
-            payment
-        }, { new: true });
-
+        const patientData = await PatientFormSchema.findByIdAndUpdate(id, req.body, { new: true });
 
         return res.status(200).json({
             success: true,
@@ -158,9 +129,9 @@ exports.generateReport = async (req, res) => {
         }
 
 
-        const { startDate, endDate, patient } = req.query;
+        const { startDate, endDate, patient, doctor } = req.query;
 
-        if (!patient || !startDate || !endDate) {
+        if (!patient || !startDate || !endDate || !doctor) {
             return res.status(400).json({ success: false, message: "Missing required fields." });
         }
 
@@ -173,6 +144,7 @@ exports.generateReport = async (req, res) => {
             {
                 $match: {
                     "patient._id": new mongoose.Types.ObjectId(patient),
+                    "doctor._id": new mongoose.Types.ObjectId(doctor),
                     date: { $gte: parsedStart, $lte: parsedEnd }
                 }
             },

@@ -4,10 +4,7 @@ const PatientFormSchema = require("../models/patientform")
 exports.addPatient = async (req, res) => {
     try {
         const {
-            name,
             email,
-            phone,
-            address,
         } = req.body;
 
         const patient = await PatientSchema.findOne({ email });
@@ -18,12 +15,7 @@ exports.addPatient = async (req, res) => {
                 .json({ success: false, message: "Patient already exists with this email" });
         }
 
-        const patientData = await PatientSchema.create({
-            name,
-            email,
-            phone,
-            address,
-        });
+        const patientData = await PatientSchema.create(req.body);
 
         return res.status(200).json({
             success: true,
@@ -47,7 +39,8 @@ exports.getPatients = async (req, res) => {
                     { name: { $regex: search, $options: "i" } },
                     { email: { $regex: search, $options: "i" } },
                     { phone: { $regex: search, $options: "i" } },
-                    { address: { $regex: search, $options: "i" } },
+                    { gender: { $regex: search, $options: "i" } },
+                    { occupation: { $regex: search, $options: "i" } },
                 ],
             };
         }
@@ -79,10 +72,7 @@ exports.updatePatient = async (req, res) => {
         } = req.body;
 
         const patient = await PatientSchema.findByIdAndUpdate(id, {
-            name,
-            email,
-            phone,
-            address
+            ...req.body
         }, { new: true });
 
         await PatientFormSchema.updateMany({ "patient._id": id }, { "patient.name": name, "patient.email": email, "patient.phone": phone, "patient.address": address })
@@ -128,6 +118,8 @@ exports.searchPatients = async (req, res) => {
                     { name: { $regex: search, $options: "i" } },
                     { email: { $regex: search, $options: "i" } },
                     { phone: { $regex: search, $options: "i" } },
+                    { gender: { $regex: search, $options: "i" } },
+                    { occupation: { $regex: search, $options: "i" } },
                 ],
             };
         }
