@@ -7,6 +7,14 @@ const doctorSchema = mongoose.Schema(
       trim: true,
       default: null,
     },
+    email: {
+      type: String,
+      trim: true,
+    },
+    phone: {
+      type: String,
+      trim: true,
+    },
   },
   {
     timestamps: true,

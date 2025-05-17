@@ -356,3 +356,134 @@ exports.generateReport = async (req, res) => {
         return res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.generateCertificate = async (req, res) => {
+    try {
+        const { id } = req.query
+        const imagePath = path.resolve(__dirname, '../images/ErayaLogo.png');
+        const stampPath = path.resolve(__dirname, '../images/stamp.png');
+
+        let imageDataUri = null;
+        let stampDataUri = null;
+
+        try {
+            const imageBase64 = fs.readFileSync(imagePath).toString('base64');
+            imageDataUri = `data:image/png;base64,${imageBase64}`;
+
+            const stampBase64 = fs.readFileSync(stampPath).toString('base64');
+            stampDataUri = `data:image/png;base64,${stampBase64}`;
+
+        } catch (err) {
+            console.error("Image load error:", err.message);
+        }
+
+        const data = await PatientFormSchema.findById(id).lean().exec();
+
+
+        const docDefinition = {
+            content: [
+                {
+                    columns: [
+                        {
+                            image: imageDataUri,
+                            width: 150
+                        },
+                    ],
+                    columnGap: 10,
+                    margin: [0, 0, 0, 20]
+                },
+                 {
+                    canvas: [
+                        { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, color: "#13756f" }
+                    ],
+                    margin: [0, 0, 0, 10]
+                },
+                {
+                    text: 'TO WHOM SO EVER IT MAY CONCERN',
+                    style: 'title',
+                    alignment: 'center',
+                    margin: [0, 20, 0, 20]
+                },
+                {
+                    text: `Date: ${moment().format("D/M/YYYY")}`,
+                    alignment: 'right',
+                    style: 'date',
+                    fontSize: 12,
+                    bold: true,
+                    margin: [0, 0, 0, 10]
+                },
+                {
+                    text: `This letter is to certify that ${data.patient.name} is suffering from ${data.treatment}.`,
+                    style: 'paragraph',
+                    margin: [0, 10, 0, 10]
+                },
+                {
+                    text: `He/She was diagnosed with ${data.treatment} on ${moment(data.date).format("DD/MM/YYYY")} and is having difficulty in performing few daily living activities. As per his/her ${data.description} he/she shall require elaser calmative therapy and advance physiotherapy exercise for approx. 30 sessions depending on the prognosis.`,
+                    style: 'paragraph',
+                    margin: [0, 0, 0, 10]
+                },
+                {
+                    text: `During the treatment days we suggest to take rest and avoid stressful activities like prolong standing/sitting/walking.`,
+                    style: 'paragraph',
+                    margin: [0, 0, 0, 15]
+                },
+                {
+                    text: `This certificate is issued on request by ${data.patient.name}`,
+                    bold: true,
+                    style: 'paragraph',
+                    margin: [0, 0, 0, 40]
+                },
+                {
+                    columns: [
+                        {},
+                        {
+                            stack: [
+                                { text: 'Thank You,', style: 'paragraph' },
+                                { text: 'Eraya Health Care', style: 'paragraph' }
+                            ],
+                            alignment: 'right'
+                        },
+                    ]
+                },
+                {
+                    columns: [
+                        {},
+                        {
+                            image: stampDataUri,
+                            width: 120,
+                            margin: [20, 0, 0, 0]
+                        },
+                    ]
+                }
+            ],
+            styles: {
+                title: { fontSize: 16, bold: true },
+                date: { fontSize: 10 },
+                paragraph: { fontSize: 12, lineHeight: 1.5 }
+            }
+        };
+
+
+        const fonts = {
+            Roboto: {
+                normal: path.join(__dirname, '../fonts/Roboto-Regular.ttf'),
+                bold: path.join(__dirname, '../fonts/Roboto-Medium.ttf'),
+                italics: path.join(__dirname, '../fonts/Roboto-Italic.ttf'),
+                bolditalics: path.join(__dirname, '../fonts/Roboto-MediumItalic.ttf')
+            }
+        };
+
+        const printer = new PdfPrinter(fonts);
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=${data.patient.name} Certificate.pdf`);
+
+        pdfDoc.pipe(res);
+        pdfDoc.end();
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};

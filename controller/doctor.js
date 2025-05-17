@@ -3,13 +3,18 @@ const PatientFormSchema = require("../models/patientform")
 
 exports.addDoctor = async (req, res) => {
   try {
-    const {
-      name,
-    } = req.body;
+    const { email } = req.body;
 
-    const doctorData = await Doctor.create({
-      name,
-    });
+    const existingDoctor = await Doctor.findOne({ email: email });
+
+    if (existingDoctor) {
+      return res.status(400).json({
+        success: false,
+        message: "Doctor with this email already exists",
+      });
+    }
+
+    const doctorData = await Doctor.create(req.body);
 
     return res.status(200).json({
       success: true,
@@ -31,6 +36,8 @@ exports.getDoctors = async (req, res) => {
       findObject = {
         $or: [
           { name: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+          { phone: { $regex: search, $options: "i" } },
         ],
       };
     }
@@ -53,14 +60,9 @@ exports.getDoctors = async (req, res) => {
 exports.updateDoctor = async (req, res) => {
   try {
     const { id } = req.params;
+    const { name } = req.body;
 
-    const {
-      name,
-    } = req.body;
-
-    const doctor = await Doctor.findByIdAndUpdate(id, {
-      name,
-    }, { new: true });
+    const doctor = await Doctor.findByIdAndUpdate(id, req.body, { new: true });
 
     await PatientFormSchema.updateMany({ "doctor._id": id }, { "doctor.name": name })
 
@@ -100,6 +102,8 @@ exports.searchDoctors = async (req, res) => {
       findObject = {
         $or: [
           { name: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+          { phone: { $regex: search, $options: "i" } },
         ],
       };
     }
