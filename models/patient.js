@@ -36,6 +36,21 @@ const patientSchema = mongoose.Schema(
       trim: true,
       default: null,
     },
+    pincode: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    city: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    state: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
