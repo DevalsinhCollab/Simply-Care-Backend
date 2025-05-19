@@ -51,6 +51,11 @@ const patientSchema = mongoose.Schema(
       trim: true,
       default: null,
     },
+    area: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
