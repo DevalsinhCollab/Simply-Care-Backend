@@ -4,6 +4,7 @@ const PdfPrinter = require("pdfmake");
 const fs = require("fs");
 const path = require("path");
 const mongoose = require("mongoose");
+const { generateReceiptNumber } = require("../comman/comman");
 
 exports.addPatientForm = async (req, res) => {
     try {
@@ -392,7 +393,7 @@ exports.generateCertificate = async (req, res) => {
                     columnGap: 10,
                     margin: [0, 0, 0, 20]
                 },
-                 {
+                {
                     canvas: [
                         { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, color: "#13756f" }
                     ],
@@ -488,15 +489,24 @@ exports.generateCertificate = async (req, res) => {
     }
 };
 
-exports.generateReportWithRx = async (req, res) => {
+exports.generateReceipt = async (req, res) => {
     try {
         const imagePath = path.resolve(__dirname, '../images/ErayaLogo.png');
+        const signPath = path.resolve(__dirname, '../images/Disha Sign.png');
+        const stampPath = path.resolve(__dirname, '../images/stamp.png');
 
         let imageDataUri = null;
+        let signDataUri = null;
+        let stampDataUri = null;
 
         try {
             const imageBase64 = fs.readFileSync(imagePath).toString('base64');
+            const signBase64 = fs.readFileSync(signPath).toString('base64');
+            const stampBase64 = fs.readFileSync(stampPath).toString('base64');
+
             imageDataUri = `data:image/png;base64,${imageBase64}`;
+            signDataUri = `data:image/png;base64,${signBase64}`;
+            stampDataUri = `data:image/png;base64,${stampBase64}`;
         } catch (err) {
             console.error("Image load error:", err.message);
         }
@@ -558,31 +568,11 @@ exports.generateReportWithRx = async (req, res) => {
         }
 
         const patientData = data[0];
-        const records = patientData.records.map((record, index) => {
-            const isEven = index % 2 === 1;
-            const rowStyle = { fillColor: isEven ? '#eaf4f3' : null, lineHeight: 1.5, margin: [0, 5, 0, 5] };
-            return [
-                { text: `${index + 1}.`, ...rowStyle, alignment: 'center' },
-                { text: record.description || "N/A", ...rowStyle, alignment: 'center' },
-                { text: moment(record.date).format("DD/MM/YYYY"), ...rowStyle, alignment: 'center' },
-                {
-                    text: record.payment != null
-                        ? `${Number(record.payment)}/-`
-                        : "0.00/-",
-                    alignment: 'right',
-                    ...rowStyle,
-                    alignment: 'center'
-                }
-            ];
-        });
 
-        const isEvenSubtotal = records.length % 2 === 1;
+        let recordData = patientData && patientData.records && patientData.records[0]
+        let lastDataArray = patientData?.records?.[patientData.records.length - 1];
 
-        records.push([
-            { text: 'Sub Total', bold: true, colSpan: 3, alignment: 'right', fillColor: isEvenSubtotal ? '#eaf4f3' : null, lineHeight: 1.5, margin: [0, 5, 0, 5] },
-            {}, {},
-            { text: `${patientData.totalAmount}/-`, bold: true, alignment: 'right', fillColor: isEvenSubtotal ? '#eaf4f3' : null, lineHeight: 1.5, margin: [0, 5, 0, 5] }
-        ]);
+        const receiptNumber = await generateReceiptNumber();
 
         const docDefinition = {
             content: [
@@ -593,7 +583,7 @@ exports.generateReportWithRx = async (req, res) => {
                             width: 150
                         },
                         {
-                            text: 'Invoice',
+                            text: 'Receipt',
                             style: 'invoiceTitle',
                             alignment: 'right',
                             margin: [0, 20, 0, 0]
@@ -612,15 +602,15 @@ exports.generateReportWithRx = async (req, res) => {
                     columns: [
                         {
                             text: [
-                                { text: 'Patient Name:- ', bold: true },
-                                `${patientData._id}`
+                                { text: 'Receipt No.:- ', bold: true },
+                                `${receiptNumber}`
                             ],
                             style: "header"
                         },
                         {
                             text: [
                                 { text: 'Date:- ', bold: true },
-                                `${patientData.date ? moment(patientData.date).format("DD/MM/YYYY") : "N/A"}`
+                                `${moment().format("DD/MM/YYYY")}`
                             ],
                             style: "header",
                             margin: [110, 10, 0, 0]
@@ -630,28 +620,101 @@ exports.generateReportWithRx = async (req, res) => {
                     margin: [0, 0, 0, 20]
                 },
                 {
-                    text: [
-                        { text: 'Doctor Name:- ', bold: true },
-                        `${patientData.doctorName}`
+                    columns: [
+                        {
+                            text: [
+                                { text: 'Patient Name:- ', bold: true },
+                                `${patientData._id}`
+                            ],
+                            style: "header"
+                        },
+                        {
+                            text: [
+                                { text: 'Doctor Name:- ', bold: true },
+                                `${patientData.doctorName}`
+                            ],
+                            style: "header",
+                            margin: [50, 10, 0, 0]
+                        },
                     ],
-                    style: "header2"
+                    columnGap: 10,
+                    margin: [0, 0, 0, 20]
                 },
                 {
                     table: {
                         headerRows: 1,
-                        widths: [50, 300, '*', 'auto'],
+                        widths: [50, 80, 150, 50, '*', '*'],
                         body: [
                             [
                                 { text: 'Sr. No.', bold: true, fillColor: '#166964', color: '#fff', lineHeight: 1.5, alignment: 'center' },
+                                { text: 'Start Date', bold: true, fillColor: '#166964', color: '#fff', lineHeight: 1.5, alignment: 'center' },
                                 { text: 'Treatment', bold: true, fillColor: '#166964', color: '#fff', lineHeight: 1.5, alignment: 'center' },
-                                { text: 'Date', bold: true, fillColor: '#166964', color: '#fff', lineHeight: 1.5, alignment: 'center' },
-                                { text: 'Amount', bold: true, fillColor: '#166964', color: '#fff', alignment: 'center', lineHeight: 1.5 }
+                                { text: 'No. Rx', bold: true, fillColor: '#166964', color: '#fff', lineHeight: 1.5, alignment: 'center' },
+                                { text: 'Per Day', bold: true, fillColor: '#166964', color: '#fff', alignment: 'center', lineHeight: 1.5 },
+                                { text: 'Total Rs.', bold: true, fillColor: '#166964', color: '#fff', alignment: 'center', lineHeight: 1.5 }
                             ],
-                            ...records
+                            [
+                                { text: 1, alignment: 'center' },
+                                { text: lastDataArray && lastDataArray.date ? moment(lastDataArray.date).format("DD/MM/YYYY") : "-" || "N/A", alignment: 'center' },
+                                { text: recordData ? recordData.description : "-" || "N/A", alignment: 'center' },
+                                { text: patientData.records.length || "N/A", alignment: 'center' },
+                                {
+                                    text: recordData.payment != null
+                                        ? `${Number(recordData.payment)}/-`
+                                        : "0.00/-",
+                                    alignment: 'right',
+                                },
+                                {
+                                    text: recordData.payment != null
+                                        ? `${Number(recordData.payment) * patientData.records.length}/-`
+                                        : "0.00/-",
+                                    alignment: 'right',
+                                }
+                            ]
                         ]
                     },
                     layout: 'noBorders',
                     margin: [0, 30, 0, 0]
+                },
+                {
+                    text: [
+                        { text: 'Payment received at Eraya Health Care for the given treatment. If you have any questions concerning this invoice contact Eraya Health Care' },
+                    ],
+                    margin: [0, 50, 0, 0]
+                },
+                {
+                    text: [
+                        { text: 'Thank you Eraya Health Care' },
+                    ],
+                    margin: [0, 20, 0, 0]
+                },
+                {
+                    columns: [
+                        {},
+                        {
+                            image: signDataUri,
+                            width: 120,
+                            margin: [20, 70, 0, 0]
+                        },
+                    ]
+                },
+                {
+                    text: [
+                        { text: 'Dr. Disha Shah' },
+                    ],
+                    fontSize: 14,
+                    alignment: 'right',
+                    margin: [0, 20, 0, 0]
+                },
+                {
+                    columns: [
+                        {},
+                        {
+                            image: stampDataUri,
+                            width: 120,
+                            margin: [20, 20, 0, 0]
+                        },
+                    ]
                 },
             ],
             styles: {

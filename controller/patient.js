@@ -75,6 +75,8 @@ exports.updatePatient = async (req, res) => {
             ...req.body
         }, { new: true });
 
+        console.log(patient)
+
         await PatientFormSchema.updateMany({ "patient._id": id }, { "patient.name": name, "patient.email": email, "patient.phone": phone, "patient.address": address })
 
         return res.status(200).json({
