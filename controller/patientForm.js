@@ -792,3 +792,337 @@ exports.generateReceipt = async (req, res) => {
         return res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.generatePrescription = async (req, res) => {
+    try {
+        const imagePath = path.resolve(__dirname, '../images/ErayaLogo.png');
+        const signPath = path.resolve(__dirname, '../images/Disha Sign.png');
+        const stampPath = path.resolve(__dirname, '../images/stamp.png');
+        const lightStampPath = path.resolve(__dirname, '../images/LightStamp.png');
+
+        let imageDataUri = null;
+        let signDataUri = null;
+        let stampDataUri = null;
+        let lightStampDataUri = null;
+
+        try {
+            const imageBase64 = fs.readFileSync(imagePath).toString('base64');
+            const signBase64 = fs.readFileSync(signPath).toString('base64');
+            const stampBase64 = fs.readFileSync(stampPath).toString('base64');
+            const lightStampBase64 = fs.readFileSync(lightStampPath).toString('base64');
+
+            imageDataUri = `data:image/png;base64,${imageBase64}`;
+            signDataUri = `data:image/png;base64,${signBase64}`;
+            stampDataUri = `data:image/png;base64,${stampBase64}`;
+            lightStampDataUri = `data:image/png;base64,${lightStampBase64}`;
+        } catch (err) {
+            console.error("Image load error:", err.message);
+        }
+
+
+        const { startDate, endDate, patient, doctor } = req.query;
+
+        if (!patient || !startDate || !endDate || !doctor) {
+            return res.status(400).json({ success: false, message: "Missing required fields." });
+        }
+
+        // Parse dates
+        let parsedStart = moment(startDate, "DD/MM/YYYY").startOf('day').toDate();
+        let parsedEnd = moment(endDate, "DD/MM/YYYY").endOf('day').toDate();
+
+        // Aggregate patient form data
+        const data = await PatientFormSchema.aggregate([
+            {
+                $match: {
+                    "patient._id": new mongoose.Types.ObjectId(patient),
+                    "doctor._id": new mongoose.Types.ObjectId(doctor),
+                    date: { $gte: parsedStart, $lte: parsedEnd }
+                }
+            },
+            {
+                $sort: {
+                    date: -1
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    date: 1,
+                    "patient.name": 1,
+                    "doctor.name": 1,
+                    description: 1,
+                    payment: { $toDouble: "$payment" }
+                }
+            },
+            {
+                $group: {
+                    _id: "$patient.name",
+                    doctorName: { $first: "$doctor.name" },
+                    date: { $first: "$date" },
+                    records: {
+                        $push: {
+                            date: "$date",
+                            doctor: "$doctor.name",
+                            description: "$description",
+                            payment: "$payment"
+                        }
+                    },
+                    totalAmount: { $sum: "$payment" }
+                }
+            }
+        ]);
+        if (!data || data.length === 0) {
+            return res.status(404).json({ success: false, message: "No data found for the given patient and date range." });
+        }
+
+        const patientData = data[0];
+
+        const docDefinition = {
+            content: [
+                {
+                    columns: [
+                        {},
+                        {
+                            image: imageDataUri,
+                            width: 150
+                        },
+                    ],
+                    columnGap: 10,
+                    margin: [0, 0, 0, 20]
+                },
+                {
+                    columns: [
+                        {
+                            width: 'auto',
+                            text: [
+                                { text: 'Patient Name', bold: true },
+                                { text: ' :- ', bold: true }
+                            ],
+                            margin: [0, 0, 5, 0]
+                        },
+                        {
+                            width: '*',
+                            stack: [
+                                { text: `${patientData._id || ''}`, margin: [0, 0, 0, 2] }, // Text above the line
+                                {
+                                    canvas: [
+                                        {
+                                            type: 'line',
+                                            x1: 0, y1: 0,
+                                            x2: 400, y2: 0,
+                                            lineWidth: 0.5
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    margin: [0, 0, 0, 20]
+                },
+                {
+                    columns: [
+                        {
+                            width: 'auto',
+                            text: [
+                                { text: 'Gender', bold: true },
+                                { text: ' :- ', bold: true }
+                            ],
+                            margin: [0, 0, 5, 0]
+                        },
+                        {
+                            width: '*',
+                            stack: [
+                                { text: 'Male', margin: [50, 0, 0, 2] }, // Text above the line
+                                {
+                                    canvas: [
+                                        {
+                                            type: 'line',
+                                            x1: 0, y1: 0,
+                                            x2: 150, y2: 0,
+                                            lineWidth: 0.5
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            width: 'auto',
+                            text: [
+                                { text: 'Date', bold: true },
+                                { text: ' :- ', bold: true }
+                            ],
+                            margin: [0, 0, 5, 0]
+                        },
+                        {
+                            width: '*',
+                            stack: [
+                                { text: moment().format("DD/MM/YYYY"), margin: [50, 0, 0, 2] }, // Text above the line
+                                {
+                                    canvas: [
+                                        {
+                                            type: 'line',
+                                            x1: 0, y1: 0,
+                                            x2: 150, y2: 0,
+                                            lineWidth: 0.5
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                    margin: [0, 0, 0, 20]
+                },
+                {
+                    text: [
+                        { text: 'Rx,' },
+                    ],
+                    fontSize: 16,
+                    bold: true,
+                    margin: [0, 20, 0, 0]
+                },
+                { image: lightStampDataUri, width: 250, margin: [0, 80, 0, 0], alignment: 'center' },
+                {},
+                {
+                    alignment: 'right',
+                    columns: [
+                        {},
+                        {},
+                        {
+                            text: [
+                                { text: 'Consulting Doctor Name', bold: true },
+                                { text: ' :- ', bold: true }
+                            ],
+                        },
+                        {
+                            stack: [
+                                {
+                                    text: 'Dr. Disha Shah',
+                                    margin: [0, 0, 0, 2],
+                                    alignment: 'center'
+                                },
+                                {
+                                    canvas: [
+                                        {
+                                            type: 'line',
+                                            x1: 0, y1: 0,
+                                            x2: 150, y2: 0,
+                                            lineWidth: 0.5
+                                        }
+                                    ],
+                                    margin: [0, 0, 0, 0]
+                                }
+                            ]
+                        }
+                    ],
+                    margin: [-60, 180, 0, 0]
+                },
+                {
+                    alignment: 'right',
+                    columns: [
+                        {},
+                        {},
+                        {
+                            text: [
+                                { text: 'Signature', bold: true },
+                                { text: ' :- ', bold: true }
+                            ],
+                        },
+                        {
+                            stack: [
+                                {
+                                    text: '',
+                                    margin: [0, 0, 0, 2],
+                                    alignment: 'center'
+                                },
+                                {
+                                    canvas: [
+                                        {
+                                            type: 'line',
+                                            x1: 0, y1: 15,
+                                            x2: 150, y2: 15,
+                                            lineWidth: 0.5
+                                        }
+                                    ],
+                                    margin: [0, 0, 0, 0]
+                                }
+                            ]
+                        }
+                    ],
+                    margin: [-60, 20, 0, 0]
+                }
+            ],
+            styles: {
+                header: { fontSize: 14, margin: [0, 10, 0, 0] },
+                header2: { fontSize: 14, margin: [0, 0, 0, 10] },
+                subheader: { fontSize: 14, bold: true, alignment: 'right' },
+                invoiceTitle: { fontSize: 25, bold: true, color: "#13756f" }
+            },
+            footer: function () {
+                return {
+                    margin: [0, 0, 0, 0],
+                    table: {
+                        widths: ['*', '*', '*'],
+                        body: [
+                            [
+                                {
+                                    text: '+91 84870 77767',
+                                    fontSize: 10,
+                                    margin: [10, 9],
+                                    color: '#ffffff'
+                                },
+                                {
+                                    text: 'B/513, AWS-3, Manav Mandir Road Memnagar, Ahmedabad (Gujarat), 380052',
+                                    fontSize: 10,
+                                    margin: [10, 5],
+                                    color: '#ffffff'
+                                },
+                                {
+                                    text: 'erayahealthcare@gmail.com',
+                                    fontSize: 10,
+                                    margin: [30, 9],
+                                    color: '#ffffff'
+                                },
+                            ]
+                        ]
+                    },
+                    layout: {
+                        fillColor: function () {
+                            return '#166964';
+                        },
+                        hLineWidth: function () {
+                            return 0;
+                        },
+                        vLineWidth: function () {
+                            return 0;
+                        }
+                    },
+                    margin: [0, 0, 0, 0]
+                };
+            }
+
+
+        };
+
+        const fonts = {
+            Roboto: {
+                normal: path.join(__dirname, '../fonts/Roboto-Regular.ttf'),
+                bold: path.join(__dirname, '../fonts/Roboto-Medium.ttf'),
+                italics: path.join(__dirname, '../fonts/Roboto-Italic.ttf'),
+                bolditalics: path.join(__dirname, '../fonts/Roboto-MediumItalic.ttf')
+            }
+        };
+
+        const printer = new PdfPrinter(fonts);
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=${patientData._id}.pdf`);
+
+        pdfDoc.pipe(res);
+        pdfDoc.end();
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};

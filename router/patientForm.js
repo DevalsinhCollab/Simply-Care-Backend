@@ -1,5 +1,5 @@
 const express = require("express");
-const { addPatientForm, getPatientsForm, updatePatientForm, deletePatientForm, generateReport, generateCertificate, generateReceipt } = require("../controller/patientForm");
+const { addPatientForm, getPatientsForm, updatePatientForm, deletePatientForm, generateReport, generateCertificate, generateReceipt, generatePrescription } = require("../controller/patientForm");
 const router = express.Router();
 
 router.post("/addpatientform", addPatientForm);
@@ -9,5 +9,6 @@ router.delete("/deletepatientform/:id", deletePatientForm);
 router.get("/generatereport", generateReport);
 router.get("/generatecertificate", generateCertificate);
 router.get("/generatereceipt", generateReceipt);
+router.get("/generateprescription", generatePrescription);
 
 module.exports = router;
