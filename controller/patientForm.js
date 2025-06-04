@@ -1126,3 +1126,47 @@ exports.generatePrescription = async (req, res) => {
         return res.status(500).json({ success: false, message: error.message });
     }
 };
+
+exports.getPatientsFormById = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const patientFormData = await PatientFormSchema.findById(id)
+            .sort({ createdAt: -1 })
+            .lean()
+            .exec();
+
+        return res.status(200).json({ data: patientFormData, success: true });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+exports.assessmentForm = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({ success: false, message: "Patient ID is required." });
+        }
+
+        const { name, age, phone, address } = req.body;
+
+        let patient = {
+            name: name,
+            age: age,
+            phone: phone,
+            address: address
+        }
+
+        const patientData = await PatientFormSchema.findByIdAndUpdate(id, { ...req.body, patient }, { new: true });
+
+        return res.status(200).json({
+            success: true,
+            message: "Assessment Added Successfully",
+            data: patientData,
+        });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+    }
+}

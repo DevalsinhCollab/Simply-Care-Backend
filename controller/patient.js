@@ -4,15 +4,15 @@ const PatientFormSchema = require("../models/patientform")
 exports.addPatient = async (req, res) => {
     try {
         const {
-            email,
+            phone,
         } = req.body;
 
-        const patient = await PatientSchema.findOne({ email });
+        const patient = await PatientSchema.findOne({ phone });
 
         if (patient) {
             return res
                 .status(400)
-                .json({ success: false, message: "Patient already exists with this email" });
+                .json({ success: false, message: "Patient already exists with this phone" });
         }
 
         const patientData = await PatientSchema.create(req.body);
@@ -66,7 +66,6 @@ exports.updatePatient = async (req, res) => {
 
         const {
             name,
-            email,
             phone,
             address,
         } = req.body;
@@ -77,7 +76,7 @@ exports.updatePatient = async (req, res) => {
 
         console.log(patient)
 
-        await PatientFormSchema.updateMany({ "patient._id": id }, { "patient.name": name, "patient.email": email, "patient.phone": phone, "patient.address": address })
+        await PatientFormSchema.updateMany({ "patient._id": id }, { "patient.name": name, "patient.phone": phone, "patient.address": address })
 
         return res.status(200).json({
             success: true,
@@ -118,7 +117,6 @@ exports.searchPatients = async (req, res) => {
             findObject = {
                 $or: [
                     { name: { $regex: search, $options: "i" } },
-                    { email: { $regex: search, $options: "i" } },
                     { phone: { $regex: search, $options: "i" } },
                     { gender: { $regex: search, $options: "i" } },
                     { occupation: { $regex: search, $options: "i" } },

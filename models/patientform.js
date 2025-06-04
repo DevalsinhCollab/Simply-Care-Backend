@@ -24,9 +24,8 @@ const patientSchema = new mongoose.Schema(
             trim: true,
             default: null,
         },
-        email: {
+        age: {
             type: String,
-            trim: true,
             default: null,
         },
         phone: {
@@ -67,6 +66,135 @@ const patientFormSchema = new mongoose.Schema(
             trim: true,
         },
         treatment: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        flex: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        abd: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        spasm: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        stiffness: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        tenderness: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        effusion: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        mmt: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        cc: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        history: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        examinationComment: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        nrs: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        dosage1: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        dosage2: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        dosage3: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        dosage4: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        dosage5: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        dosage6: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        description: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        dosage5: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        joint: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        treatment: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        assessBy: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        dosage5: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        referenceDoctor: {
+            type: doctorSchema,
+            default: null,
+        },
+        paymentType: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        prescribeMedicine: {
             type: String,
             trim: true,
             default: null,

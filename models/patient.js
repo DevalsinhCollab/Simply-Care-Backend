@@ -7,11 +7,6 @@ const patientSchema = mongoose.Schema(
       trim: true,
       default: null,
     },
-    email: {
-      type: String,
-      trim: true,
-      default: null,
-    },
     phone: {
       type: String,
       trim: true,
