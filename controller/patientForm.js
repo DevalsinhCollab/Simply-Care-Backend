@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const mongoose = require("mongoose");
 const { generateReceiptNumber } = require("../comman/comman");
+const PatientSchema = require("../models/patient");
 
 exports.addPatientForm = async (req, res) => {
     try {
@@ -1150,7 +1151,7 @@ exports.assessmentForm = async (req, res) => {
             return res.status(400).json({ success: false, message: "Patient ID is required." });
         }
 
-        const { name, age, phone, address } = req.body;
+        const { name, age, phone, address, patientId } = req.body;
 
         let patient = {
             name: name,
@@ -1159,14 +1160,1077 @@ exports.assessmentForm = async (req, res) => {
             address: address
         }
 
-        const patientData = await PatientFormSchema.findByIdAndUpdate(id, { ...req.body, patient }, { new: true });
+        const patientFormData = await PatientFormSchema.findByIdAndUpdate(id, { ...req.body, patient: { _id: patientId, ...patient } }, { new: true });
+        await PatientSchema.findByIdAndUpdate(patientId, { ...patient }, { new: true });
 
         return res.status(200).json({
             success: true,
             message: "Assessment Added Successfully",
-            data: patientData,
+            data: patientFormData,
         });
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message });
     }
 }
+
+exports.generateAssessment = async (req, res) => {
+    try {
+        const imagePath = path.resolve(__dirname, '../images/ErayaLogo.png');
+
+        let imageDataUri = null;
+
+        try {
+            const imageBase64 = fs.readFileSync(imagePath).toString('base64');
+            imageDataUri = `data:image/png;base64,${imageBase64}`;
+        } catch (err) {
+            console.error("Image load error:", err.message);
+        }
+
+        const { id } = req.query;
+
+        const patientFormData = await PatientFormSchema.findById(id)
+
+        console.log(patientFormData, "patientFormData----")
+
+        const docDefinition = {
+            content: [
+                {
+                    columns: [
+                        {
+                            image: imageDataUri,
+                            width: 150
+                        },
+                        {
+                            text: '',
+                            style: 'invoiceTitle',
+                            alignment: 'right',
+                            margin: [0, 20, 0, 0]
+                        }
+                    ],
+                    columnGap: 10,
+                    margin: [0, 0, 0, 20]
+                },
+                {
+                    text: 'ASSESSMENT FORM',
+                    style: 'assessmentTitle',
+                    alignment: 'center',
+                    margin: [0, 0, 0, 0]
+                },
+                {
+                    text: 'General Information',
+                    fontSize: 15,
+                    bold: true,
+                    margin: [0, 10, 0, 0]
+                },
+                {
+                    columns: [
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Pt. Name',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.patient && patientFormData.patient.name || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Phone',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.patient && patientFormData.patient.phone || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Age',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.patient && patientFormData.patient.age || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Address',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.patient && patientFormData.patient.address || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [0, 20, 10, 0], // spacing between columns
+                        },
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        }
+                                    ],
+                                    [
+                                        {
+                                            text: 'Payment',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.payment || "",
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Date',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.date && moment(patientFormData.date).format("DD/MM/YYYY") || "",
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [10, 20, 0, 0],
+                        }
+                    ]
+                },
+                {
+                    text: 'Examination',
+                    fontSize: 15,
+                    bold: true,
+                    margin: [0, 20, 0, 0]
+                },
+                {
+                    columns: [
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Flex',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.flex,
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Abd',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.abd,
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [0, 20, 10, 0], // spacing between columns
+                        },
+                    ]
+                },
+                {
+                    text: 'Palpation & Other Info',
+                    fontSize: 15,
+                    bold: true,
+                    margin: [0, 20, 0, 0]
+                },
+                {
+                    columns: [
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Spasm',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.spasm,
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Stiffness',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.stiffness,
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Tenderness',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 9.5,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.tenderness,
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Effusion',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.effusion,
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [0, 20, 10, 0], // spacing between columns
+                        },
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        }
+                                    ],
+                                    [
+                                        {
+                                            text: 'MMT',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.mmt,
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'C/C',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.cc,
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'History',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.history,
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Ex. Comment',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 9.5,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.examinationComment || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [10, 20, 0, 0],
+                        }
+
+                    ]
+                },
+                {
+                    text: 'Functional Assessment and Treatment',
+                    fontSize: 15,
+                    bold: true,
+                    margin: [0, 150, 0, 0]
+                },
+                {
+                    columns: [
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'NRS',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.nrs || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Dosage 1',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.dosage1 || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Dosage 2',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.dosage2 || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Dosage 3',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.dosage3 || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [0, 20, 10, 0], // spacing between columns
+                        },
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        }
+                                    ],
+                                    [
+                                        {
+                                            text: 'Dosage 4',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.dosage4 || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Dosage 5',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.dosage5 || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Dosage 6',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.dosage6 || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [10, 20, 0, 0],
+                        }
+
+                    ]
+                },
+                {
+                    text: 'Diagnosis',
+                    fontSize: 15,
+                    bold: true,
+                    margin: [0, 20, 0, 0]
+                },
+                {
+                    columns: [
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Description',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 9.5,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.description || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Joint',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.joint || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Treatment',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.treatment || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Assess By',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.assessBy || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [0, 20, 10, 0], // spacing between columns
+                        },
+                        {
+                            table: {
+                                headerRows: 1,
+                                widths: [50, 180],
+                                body: [
+                                    [
+                                        {
+                                            text: 'Name',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: 'Details',
+                                            bold: true,
+                                            fillColor: '#166964',
+                                            color: '#fff',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        }
+                                    ],
+                                    [
+                                        {
+                                            text: 'Doctor',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 10,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.doctor && patientFormData.doctor.name || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Ref. Doctor',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 9.5,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.referenceDoctor && patientFormData.referenceDoctor.name || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Payment Type',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            fontSize: 9.5,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.paymentType || '',
+                                            bold: true,
+                                            color: 'black',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                    [
+                                        {
+                                            text: 'Prescribe Medicine',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            fontSize: 9.5,
+                                            border: [false, false, true, false],
+                                            borderColor: ['transparent', 'transparent', '#e7e7e7', 'transparent']
+                                        },
+                                        {
+                                            text: patientFormData && patientFormData.prescribeMedicine || '',
+                                            bold: true,
+                                            color: 'black',
+                                            fillColor: '#e8f4f4',
+                                            lineHeight: 1.5,
+                                            alignment: 'center',
+                                            border: [false, false, false, false]
+                                        },
+                                    ],
+                                ]
+                            },
+                            margin: [10, 20, 0, 0],
+                        }
+
+                    ]
+                },
+            ],
+            styles: {
+                header: { fontSize: 14, margin: [0, 10, 0, 0] },
+                header2: { fontSize: 14, margin: [0, 0, 0, 10] },
+                subheader: { fontSize: 14, bold: true, alignment: 'right' },
+                assessmentTitle: { fontSize: 20, bold: true, color: "#13756f" }
+            },
+            footer: function () {
+                return {
+                    margin: [0, 0, 0, 0],
+                    table: {
+                        widths: ['*', '*', '*'],
+                        body: [
+                            [
+                                {
+                                    text: '+91 84870 77767',
+                                    fontSize: 10,
+                                    margin: [10, 9],
+                                    color: '#ffffff'
+                                },
+                                {
+                                    text: 'B/513, AWS-3, Manav Mandir Road Memnagar, Ahmedabad (Gujarat), 380052',
+                                    fontSize: 10,
+                                    margin: [10, 5],
+                                    color: '#ffffff'
+                                },
+                                {
+                                    text: 'erayahealthcare@gmail.com',
+                                    fontSize: 10,
+                                    margin: [30, 9],
+                                    color: '#ffffff'
+                                },
+                            ]
+                        ]
+                    },
+                    layout: {
+                        fillColor: function () {
+                            return '#166964';
+                        },
+                        hLineWidth: function () {
+                            return 0;
+                        },
+                        vLineWidth: function () {
+                            return 0;
+                        }
+                    },
+                    margin: [0, 0, 0, 0]
+                };
+            }
+
+
+        };
+
+        const fonts = {
+            Roboto: {
+                normal: path.join(__dirname, '../fonts/Roboto-Regular.ttf'),
+                bold: path.join(__dirname, '../fonts/Roboto-Medium.ttf'),
+                italics: path.join(__dirname, '../fonts/Roboto-Italic.ttf'),
+                bolditalics: path.join(__dirname, '../fonts/Roboto-MediumItalic.ttf')
+            }
+        };
+
+        const printer = new PdfPrinter(fonts);
+        const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=Assessment.pdf`);
+
+        pdfDoc.pipe(res);
+        pdfDoc.end();
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
