@@ -1,26 +1,59 @@
-const express = require("express");
-const {
-  addAppointment,
-  getAllAppointmentsByDoc,
-  updateAppointment,
-  deleteAppointment,
-  getAppointmentByPatient,
-  getAppointmentByDoctor,
-} = require("../controller/appointment");
+// const express = require("express");
+// const {
+//   addAppointment,
+//   getAllAppointmentsByDoc,
+//   updateAppointment,
+//   deleteAppointment,
+//   getAppointmentByPatient,
+//   getAppointmentByDoctor,
+// } = require("../controller/appointment");
 
+// const router = express.Router();
+
+// router.post("/addappointment", (req, res) => {
+//   req.io = req.app.get("socketio");
+//   addAppointment(req, res);
+// });
+// router.post("/getallappointmentsbydoc/:did", getAllAppointmentsByDoc);
+// router.post("/updateappointment/:id", (req, res) => {
+//   req.io = req.app.get("socketio");
+//   updateAppointment(req, res);
+// });
+// router.delete("/deleteappointment/:id", deleteAppointment);
+// router.post("/getappointmentbypatient/:pid", getAppointmentByPatient);
+// router.post("/getappointmentbydoctor/:did", getAppointmentByDoctor);
+
+// module.exports = router;
+
+const express = require("express");
+const { createAppointment, getAllAppointments, getAppointmentById, updateAppointment, deleteAppointment, generateReport, generateCertificate, generateReceipt, generatePrescription } = require("../controller/appointment");
 const router = express.Router();
 
-router.post("/addappointment", (req, res) => {
-  req.io = req.app.get("socketio");
-  addAppointment(req, res);
-});
-router.post("/getallappointmentsbydoc/:did", getAllAppointmentsByDoc);
-router.post("/updateappointment/:id", (req, res) => {
-  req.io = req.app.get("socketio");
-  updateAppointment(req, res);
-});
-router.delete("/deleteappointment/:id", deleteAppointment);
-router.post("/getappointmentbypatient/:pid", getAppointmentByPatient);
-router.post("/getappointmentbydoctor/:did", getAppointmentByDoctor);
+// Create appointment
+router.post("/createAppointment", createAppointment);
+
+// Get all appointments
+router.get("/getAllAppointments", getAllAppointments);
+
+// Get appointment by ID
+router.get("/getAppointmentById/:id", getAppointmentById);
+
+// Update appointment
+router.put("/updateAppointment/:id", updateAppointment);
+
+// Delete appointment
+router.put("/deleteAppointment/:id", deleteAppointment);
+
+// Generate report
+router.get("/generatereport", generateReport);
+
+// Generate certificate
+router.get("/generatecertificate", generateCertificate);
+
+// Generate receipt
+router.get("/generatereceipt", generateReceipt);
+
+// Generate prescription
+router.get("/generateprescription", generatePrescription);
 
 module.exports = router;

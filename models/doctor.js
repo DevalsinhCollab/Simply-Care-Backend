@@ -15,6 +15,21 @@ const doctorSchema = mongoose.Schema(
       type: String,
       trim: true,
     },
+    // docSpeciality: {
+    //   type: String,
+    // },
+    docSpeciality: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "doctorSpeciality",
+    },
+    joiningDate: {
+      type: String,
+      default: null,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

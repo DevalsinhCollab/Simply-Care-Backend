@@ -5,7 +5,7 @@ const router = express.Router();
 router.post("/addpatientform", addPatientForm);
 router.get("/getpatientsform", getPatientsForm);
 router.put("/updatepatientform/:id", updatePatientForm);
-router.delete("/deletepatientform/:id", deletePatientForm);
+router.put("/deletepatientform/:id", deletePatientForm);
 router.get("/generatereport", generateReport);
 router.get("/generatecertificate", generateCertificate);
 router.get("/generatereceipt", generateReceipt);

@@ -1,5 +1,5 @@
 const Doctor = require("../models/doctor");
-const PatientFormSchema = require("../models/patientform")
+const PatientFormSchema = require("../models/patientform");
 
 exports.addDoctor = async (req, res) => {
   try {
@@ -13,6 +13,8 @@ exports.addDoctor = async (req, res) => {
         message: "Doctor with this email already exists",
       });
     }
+
+    console.log(req.body);
 
     const doctorData = await Doctor.create(req.body);
 
@@ -30,7 +32,7 @@ exports.getDoctors = async (req, res) => {
   try {
     const { page = 0, pageSize = 0, search } = req.query;
 
-    let findObject = {};
+    let findObject = {isDeleted: false};
 
     if (search && search !== "") {
       findObject = {
@@ -44,7 +46,7 @@ exports.getDoctors = async (req, res) => {
 
     const skip = page * pageSize;
     const totalCount = await Doctor.countDocuments(findObject);
-    const doctors = await Doctor.find(findObject)
+    const doctors = await Doctor.find(findObject).populate('docSpeciality')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
@@ -64,7 +66,10 @@ exports.updateDoctor = async (req, res) => {
 
     const doctor = await Doctor.findByIdAndUpdate(id, req.body, { new: true });
 
-    await PatientFormSchema.updateMany({ "doctor._id": id }, { "doctor.name": name })
+    await PatientFormSchema.updateMany(
+      { "doctor._id": id },
+      { "doctor.name": name }
+    );
 
     return res.status(200).json({
       success: true,
@@ -80,7 +85,11 @@ exports.deleteDoctor = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const doctor = await Doctor.findByIdAndDelete(id)
+    const doctor = await Doctor.findByIdAndUpdate(
+      id,
+      { isDeleted: true },
+      { new: true }
+    );
 
     return res.status(200).json({
       success: true,
@@ -96,7 +105,7 @@ exports.searchDoctors = async (req, res) => {
   try {
     const { search } = req.query;
 
-    let findObject = {};
+    let findObject = {isDeleted : false };
 
     if (search && search !== "") {
       findObject = {

@@ -199,6 +199,10 @@ const patientFormSchema = new mongoose.Schema(
             trim: true,
             default: null,
         },
+        isDeleted: {
+            type: Boolean,
+            default: false,
+        },
     },
     {
         timestamps: true,

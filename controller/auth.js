@@ -93,7 +93,7 @@ exports.verifyOtp = async (req, res) => {
       role: user.role,
     };
 
-    const expiresTime = user.keepMeLoggedIn ? "24h" : "30min";
+    const expiresTime = user.keepMeLoggedIn ? "24h" : "24h";
 
     const token = JWT.sign(JWT_DATA, process.env.JWT_SECRET_KEY, {
       expiresIn: expiresTime,

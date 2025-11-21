@@ -36,9 +36,13 @@ const userSchema = mongoose.Schema(
       enum: ["A", "U", "D"],
       default: "U",
     },
+    // docSpeciality: {
+    //   type: String,
+    //   enum: ["PH", "NE"],
+    // },
     docSpeciality: {
       type: String,
-      enum: ["PH", "NE"],
+      enum: ["Physiotherapy", "Counseller","Physician"],
     },
   },
   {
