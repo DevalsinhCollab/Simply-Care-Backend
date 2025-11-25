@@ -291,7 +291,6 @@ exports.createAppointment = async (req, res) => {
 //   }
 // };
 
-
 exports.getAllAppointments = async (req, res) => {
   try {
     const {
@@ -327,13 +326,18 @@ exports.getAllAppointments = async (req, res) => {
     }
 
     // 📅 Date filter
-    if (startDate && endDate && startDate !== "Invalid Date" && endDate !== "Invalid Date") {
+    if (
+      startDate &&
+      endDate &&
+      startDate !== "Invalid Date" &&
+      endDate !== "Invalid Date"
+    ) {
       filter.date = {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
       };
     }
- 
+
     /* ⭐ UNIQUE PATIENT MODE -------------------------------- */
     if (uniquePatient === "true") {
       const records = await Appointment.aggregate([
@@ -342,18 +346,18 @@ exports.getAllAppointments = async (req, res) => {
         {
           $group: {
             _id: "$patientId",
-            doc: { $first: "$$ROOT" } // pick latest appointment per patient
-          }
+            doc: { $first: "$$ROOT" }, // pick latest appointment per patient
+          },
         },
         { $replaceRoot: { newRoot: "$doc" } },
         { $skip: Number(page) * Number(pageSize) },
-        { $limit: Number(pageSize) }
+        { $limit: Number(pageSize) },
       ]);
 
       // populate doctor & patient
       await Appointment.populate(records, [
         { path: "doctorId" },
-        { path: "patientId" }
+        { path: "patientId" },
       ]);
 
       const total = await Appointment.distinct("patientId", filter);
@@ -373,13 +377,10 @@ exports.getAllAppointments = async (req, res) => {
     const total = await Appointment.countDocuments(filter);
 
     res.json({ success: true, data, total });
-
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
   }
 };
-
-
 
 // ===========================
 // GET APPOINTMENT BY ID
@@ -733,12 +734,25 @@ exports.generateReport = async (req, res) => {
         subheader: { fontSize: 14, bold: true, alignment: "right" },
         invoiceTitle: { fontSize: 25, bold: true, color: "#13756f" },
       },
-      footer: function () {
+      // footer: function () {
+      //   return {
+      //     columns: [
+      //       { text: "Eraya Health Care", alignment: "left", margin: [20, 0] },
+      //       {
+      //         text: `Page ${this.pageCount}`,
+      //         alignment: "right",
+      //         margin: [0, 0, 20, 0],
+      //       },
+      //     ],
+      //     margin: [0, 10, 0, 0],
+      //   };
+      // },
+      footer: function (currentPage, pageCount) {
         return {
           columns: [
             { text: "Eraya Health Care", alignment: "left", margin: [20, 0] },
             {
-              text: `Page ${this.pageCount}`,
+              text: `Page ${currentPage} of ${pageCount}`,
               alignment: "right",
               margin: [0, 0, 20, 0],
             },

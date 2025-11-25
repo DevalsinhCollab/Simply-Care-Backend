@@ -74,7 +74,6 @@ exports.updatePatient = async (req, res) => {
             ...req.body
         }, { new: true });
 
-        console.log(patient)
 
         await PatientFormSchema.updateMany({ "patient._id": id }, { "patient.name": name, "patient.phone": phone, "patient.address": address })
 
@@ -101,7 +100,6 @@ exports.deletePatient = async (req, res) => {
         });
     } catch (error) {
 
-        console.log(error)
 
         return res.status(400).json({ message: error.message, success: false });
     }

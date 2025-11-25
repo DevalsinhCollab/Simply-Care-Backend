@@ -14,7 +14,6 @@ exports.addDoctor = async (req, res) => {
       });
     }
 
-    console.log(req.body);
 
     const doctorData = await Doctor.create(req.body);
 

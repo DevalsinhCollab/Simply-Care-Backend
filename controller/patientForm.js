@@ -43,7 +43,6 @@ exports.addPatientForm = async (req, res) => {
 
     let finalPatient;
 
-    console.log("Received patient data:", doctor);
 
 
     // ✅ CASE 1 — User selected EXISTING patient
@@ -71,6 +70,8 @@ exports.addPatientForm = async (req, res) => {
         }
     }
 
+    console.log("finalPatient---", finalPatient);
+
     // 🟢 Now prepare final payload
     const payload = {
       patient: {
@@ -79,6 +80,11 @@ exports.addPatientForm = async (req, res) => {
         phone: finalPatient.phone,
         age: finalPatient.age,
         address: finalPatient.address,
+        pincode: finalPatient.pincode,
+        city: finalPatient.city,
+        state: finalPatient.state,
+        occupation: finalPatient.occupation,
+        area: finalPatient.area,
       },
       doctor: doctor ? { _id: doctor._id, name: doctor.name } : null,
       referenceDoctor: referenceDoctor
@@ -1539,7 +1545,6 @@ exports.generateAssessment = async (req, res) => {
 
     const patientFormData = await PatientFormSchema.findById(id);
 
-    console.log(patientFormData, "patientFormData----");
 
     const docDefinition = {
       content: [
