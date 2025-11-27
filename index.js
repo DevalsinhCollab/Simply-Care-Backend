@@ -32,7 +32,6 @@ app.use("/api/auth", require("./router/auth"));
 app.use("/api/doc", require("./router/doctor"));
 app.use("/api/msg", require("./router/message"));
 app.use("/api/prb", require("./router/problem"));
-app.use("/api/appt", require("./router/appointment"));
 app.use("/api/patient", require("./router/patient"));
 app.use("/api/patientform", require("./router/patientForm"));
 app.use("/api/dashboard", require("./router/dashboard"));
