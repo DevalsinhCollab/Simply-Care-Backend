@@ -85,6 +85,7 @@ exports.addPatientForm = async (req, res) => {
         state: finalPatient.state,
         occupation: finalPatient.occupation,
         area: finalPatient.area,
+        gender: finalPatient.gender,
       },
       doctor: doctor ? { _id: doctor._id, name: doctor.name } : null,
       referenceDoctor: referenceDoctor

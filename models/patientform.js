@@ -63,6 +63,11 @@ const patientSchema = new mongoose.Schema(
             trim: true,
             default: null,
         },
+        gender: {
+            type: String,
+            trim: true,
+            default: null,
+        },
     },
     { _id: false }
 );

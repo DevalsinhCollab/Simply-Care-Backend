@@ -62,7 +62,7 @@ const appointmentSchema = new mongoose.Schema(
 
     treatment: {
       type: String,
-      required: true,
+      // required: true,
     },
 
     description: {
@@ -75,6 +75,21 @@ const appointmentSchema = new mongoose.Schema(
       default: Date.now,
     },
 
+    appointmentDate: {
+      type: Date,
+      required: false,
+    },
+
+    startTime: {
+      type: String,
+      required: false,
+    },
+
+    endTime: {
+      type: String,
+      required: false,
+    },
+
     payment: {
       type: Number,
       required: false,
@@ -83,6 +98,11 @@ const appointmentSchema = new mongoose.Schema(
     visitStatus: {
       type: Boolean,
       default: false,
+    },
+    docApproval: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
     },
     isDeleted: {
       type: Boolean,

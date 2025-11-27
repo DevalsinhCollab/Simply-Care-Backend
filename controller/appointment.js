@@ -1714,3 +1714,260 @@ exports.generatePrescription = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ===========================
+// GET APPOINTMENTS BY PATIENT
+// ===========================
+exports.getAppointmentsByPatient = async (req, res) => {
+  try {
+    const { patientId } = req.query;
+
+    if (!patientId) {
+      return res.status(400).json({
+        success: false,
+        message: "Patient ID is required",
+      });
+    }
+
+    const appointments = await Appointment.find({
+      patientId,
+      isDeleted: false,
+    })
+      .populate("doctorId", "name email phone docSpeciality")
+      .populate("patientId", "name email phone")
+      .sort({ appointmentDate: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: appointments,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// ===========================
+// GET AVAILABLE SLOTS
+// ===========================
+exports.getAvailableSlots = async (req, res) => {
+  try {
+    const { doctorId, appointmentDate } = req.query;
+
+    if (!doctorId || !appointmentDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Doctor ID and appointment date are required",
+      });
+    }
+
+    // Get doctor with working hours
+    const doctor = await Doctor.findById(doctorId);
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
+    }
+
+    // Parse working hours
+    const startTime = doctor.workingHours?.startTime || "09:00";
+    const endTime = doctor.workingHours?.endTime || "17:00";
+
+    // Get booked slots for this date
+    const bookedAppointments = await Appointment.find({
+      doctorId,
+      appointmentDate: {
+        $gte: new Date(appointmentDate).setHours(0, 0, 0, 0),
+        $lt: new Date(appointmentDate).setHours(23, 59, 59, 999),
+      },
+      isDeleted: false,
+    });
+
+    // Generate 1-hour slots
+    const slots = [];
+    const [startHour, startMin] = startTime.split(":").map(Number);
+    const [endHour, endMin] = endTime.split(":").map(Number);
+
+    let currentHour = startHour;
+    let currentMin = startMin;
+
+    while (currentHour < endHour || (currentHour === endHour && currentMin < endMin)) {
+      const nextHour = currentMin + 60 === 60 ? currentHour + 1 : currentHour;
+      const nextMin = currentMin + 60 === 60 ? 0 : currentMin + 60;
+
+      const slotStart = `${String(currentHour).padStart(2, "0")}:${String(currentMin).padStart(2, "0")}`;
+      const slotEnd = `${String(nextHour).padStart(2, "0")}:${String(nextMin).padStart(2, "0")}`;
+
+      // Check if slot is booked
+      const isBooked = bookedAppointments.some(
+        (apt) => apt.startTime === slotStart && apt.endTime === slotEnd
+      );
+
+      slots.push({
+        startTime: slotStart,
+        endTime: slotEnd,
+        isBooked,
+      });
+
+      currentHour = nextHour;
+      currentMin = nextMin;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: slots,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// ===========================
+// CREATE APPOINTMENT WITH SLOT
+// ===========================
+exports.createAppointmentWithSlot = async (req, res) => {
+  try {
+    const {
+      doctorId,
+      patientId,
+      appointmentDate,
+      startTime,
+      endTime,
+      treatment,
+      description,
+      patientData,
+    } = req.body;
+
+    // Validate required fields
+    if (!doctorId || !patientId || !appointmentDate || !startTime || !endTime) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
+
+    // Check if slot is already booked
+    const existingAppointment = await Appointment.findOne({
+      doctorId,
+      appointmentDate: {
+        $gte: new Date(appointmentDate).setHours(0, 0, 0, 0),
+        $lt: new Date(appointmentDate).setHours(23, 59, 59, 999),
+      },
+      startTime,
+      endTime,
+      isDeleted: false,
+    });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        success: false,
+        message: "This time slot is already booked",
+      });
+    }
+
+    const Patient = require("../models/patient");
+    const PatientForm = require("../models/patientform");
+    const Doctor = require("../models/doctor");
+
+    let finalPatientId = patientId;
+    let patientFormId = null;
+
+    // ✅ CASE 1: Check if patient already exists in Patient DB by phone
+    if (patientData && patientData.phone) {
+      const existingPatient = await Patient.findOne({ phone: patientData.phone });
+
+      if (existingPatient) {
+        finalPatientId = existingPatient._id;
+        console.log("✅ Patient already exists in Patient DB:", finalPatientId);
+      } else {
+        // Create new patient in Patient DB
+        const newPatient = await Patient.create({
+          name: patientData.name || "",
+          phone: patientData.phone || "",
+          email: patientData.email || "",
+          age: patientData.age || "",
+          gender: patientData.gender || "",
+          occupation: patientData.occupation || "",
+          address: patientData.address || "",
+          pincode: patientData.pincode || "",
+          city: patientData.city || "",
+          state: patientData.state || "",
+          area: patientData.area || "",
+        });
+        finalPatientId = newPatient._id;
+        console.log("✅ New patient created in Patient DB:", finalPatientId);
+      }
+
+      // ✅ CASE 2: Check if PatientForm already exists with same phone AND name
+      const existingPatientForm = await PatientForm.findOne({
+        "patient.phone": patientData.phone,
+        "patient.name": patientData.name,
+      });
+
+      if (!existingPatientForm) {
+        // Create PatientForm only if it doesn't exist
+        const doctorData = await Doctor.findById(doctorId);
+        const newPatientForm = await PatientForm.create({
+          patient: {
+            _id: finalPatientId,
+            name: patientData.name || "",
+            phone: patientData.phone || "",
+            age: patientData.age || "",
+            gender: patientData.gender || "",
+            occupation: patientData.occupation || "",
+            address: patientData.address || "",
+            pincode: patientData.pincode || "",
+            city: patientData.city || "",
+            state: patientData.state || "",
+            area: patientData.area || "",
+          },
+          doctor: doctorData ? { _id: doctorData._id, name: doctorData.name } : null,
+          // treatment: treatment || "",
+          description: description || "",
+        });
+        patientFormId = newPatientForm._id;
+        console.log("✅ New PatientForm created:", patientFormId);
+      } else {
+        // PatientForm already exists - use its ID
+        patientFormId = existingPatientForm._id;
+        console.log("✅ PatientForm already exists:", patientFormId);
+      }
+    }
+
+    // Create new appointment with patientId and patientFormId
+    const newAppointment = await Appointment.create({
+      doctorId,
+      patientId: finalPatientId,
+      patientFormId: patientFormId,
+      appointmentDate: new Date(appointmentDate),
+      startTime,
+      endTime,
+      treatment,
+      description: description || "",
+      date: new Date(appointmentDate),
+    });
+
+    // Populate doctor and patient data
+    const populatedAppointment = await Appointment.findById(newAppointment._id)
+      .populate("doctorId", "name email phone docSpeciality")
+      .populate("patientId", "name email phone")
+      .populate("patientFormId");
+
+    return res.status(201).json({
+      success: true,
+      message: "Appointment booked successfully",
+      data: populatedAppointment,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
