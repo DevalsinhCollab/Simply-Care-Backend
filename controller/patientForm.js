@@ -271,17 +271,36 @@ exports.deletePatientForm = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // const patient = await PatientFormSchema.findByIdAndDelete(id);
-    const patient = await PatientFormSchema.findByIdAndUpdate(
+    // Get the patientForm to find the associated patient
+    const patientForm = await PatientFormSchema.findById(id);
+    
+    if (!patientForm) {
+      return res.status(404).json({
+        success: false,
+        message: "PatientForm not found",
+      });
+    }
+
+    // Mark the patientForm as deleted
+    const deletedForm = await PatientFormSchema.findByIdAndUpdate(
       id,
       { isDeleted: true },
       { new: true }
     );
 
+    // Mark the associated patient as deleted
+    if (patientForm.patient && patientForm.patient._id) {
+      await PatientSchema.findByIdAndUpdate(
+        patientForm.patient._id,
+        { isDeleted: true },
+        { new: true }
+      );
+    }
+
     return res.status(200).json({
       success: true,
       message: "Deleted Successfully",
-      data: patient,
+      data: deletedForm,
     });
   } catch (error) {
     return res.status(400).json({ message: error.message, success: false });

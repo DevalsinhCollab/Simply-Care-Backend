@@ -31,10 +31,11 @@ exports.getPatients = async (req, res) => {
     try {
         const { page = 0, pageSize = 10, search } = req.query;
 
-        let findObject = {}
+        let findObject = { isDeleted: false };
 
         if (search && search !== "") {
             findObject = {
+                ...findObject,
                 $or: [
                     { name: { $regex: search, $options: "i" } },
                     { email: { $regex: search, $options: "i" } },
@@ -109,10 +110,11 @@ exports.searchPatients = async (req, res) => {
     try {
         const { search } = req.query;
 
-        let findObject = {};
+        let findObject = { isDeleted: false };
 
         if (search && search !== "") {
             findObject = {
+                ...findObject,
                 $or: [
                     { name: { $regex: search, $options: "i" } },
                     { phone: { $regex: search, $options: "i" } },
