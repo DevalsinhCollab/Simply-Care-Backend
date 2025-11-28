@@ -106,6 +106,36 @@ exports.deletePatient = async (req, res) => {
     }
 };
 
+exports.getPatientByPhone = async (req, res) => {
+    try {
+        const { phone } = req.query;
+
+        if (!phone) {
+            return res.status(400).json({ success: false, message: "Phone number is required" });
+        }
+
+        const patient = await PatientSchema.findOne({ phone, isDeleted: false });
+
+        if (!patient) {
+            return res.status(200).json({ 
+                success: true, 
+                message: "Patient not found", 
+                data: null,
+                found: false 
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Patient found",
+            data: patient,
+            found: true
+        });
+    } catch (error) {
+        return res.status(400).json({ message: error.message, success: false });
+    }
+};
+
 exports.searchPatients = async (req, res) => {
     try {
         const { search } = req.query;

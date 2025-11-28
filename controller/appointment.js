@@ -212,6 +212,7 @@ exports.createAppointment = async (req, res) => {
       date,
       payment,
       patientFormId,
+      docApproval
     } = req.body;
 
     const newAppointment = await Appointment.create({
@@ -222,6 +223,7 @@ exports.createAppointment = async (req, res) => {
       description,
       date,
       payment,
+      docApproval
     });
 
     return res.status(201).json({
@@ -304,7 +306,7 @@ exports.getAllAppointments = async (req, res) => {
       uniquePatient,
     } = req.query;
 
-    let filter = { isDeleted: false };
+    let filter = { isDeleted: false , docApproval : "approved" };
 
     if (doctorId) filter.doctorId = doctorId;
     if (patientId) filter.patientId = patientId;
@@ -1747,8 +1749,79 @@ exports.getAppointmentsByPatient = async (req, res) => {
       message: error.message,
     });
   }
+}
+    exports.getAppointmentsWithTime = async (req, res) => {
+  try {
+    // const appointments = await Appointment.find({
+    //   startTime: { $exists: true, $ne: null, $ne: "" },
+    //   endTime: { $exists: true, $ne: null, $ne: "" },
+    //   isDeleted: false,
+    // })
+    //   .populate("doctorId")
+    //   .populate("patientId")
+    //   .sort({ appointmentDate: -1 });
+    const appointments = await Appointment.find({docApproval : "pending",
+      isDeleted: false,
+    })
+      .populate("doctorId")
+      .populate("patientId")
+      .sort({ appointmentDate: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: appointments,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
 
+// ===========================
+// UPDATE APPOINTMENT STATUS
+// ===========================
+exports.updateAppointmentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { docApproval } = req.body;
+
+    // Validate status
+    if (!["pending", "approved", "rejected"].includes(docApproval)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Must be 'pending', 'approved', or 'rejected'",
+      });
+    }
+
+    const updatedAppointment = await Appointment.findByIdAndUpdate(
+      id,
+      { docApproval },
+      { new: true }
+    )
+      .populate("doctorId")
+      .populate("patientId");
+
+    if (!updatedAppointment) {
+      return res.status(404).json({
+        success: false,
+        message: "Appointment not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Appointment ${docApproval} successfully`,
+      data: updatedAppointment,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 // ===========================
 // GET AVAILABLE SLOTS
 // ===========================

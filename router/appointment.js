@@ -26,7 +26,7 @@
 // module.exports = router;
 
 const express = require("express");
-const { createAppointment, getAllAppointments, getAppointmentById, updateAppointment, deleteAppointment, generateReport, generateCertificate, generateReceipt, generatePrescription, getAppointmentsByPatient, getAvailableSlots, createAppointmentWithSlot } = require("../controller/appointment");
+const { createAppointment, getAllAppointments, getAppointmentById, updateAppointment, deleteAppointment, generateReport, generateCertificate, generateReceipt, generatePrescription, getAppointmentsByPatient, getAvailableSlots, createAppointmentWithSlot, getAppointmentsWithTime, updateAppointmentStatus } = require("../controller/appointment");
 const router = express.Router();
 
 // Create appointment
@@ -49,6 +49,11 @@ router.get("/getAppointmentsByPatient", getAppointmentsByPatient);
 
 // Get available slots for a doctor
 router.get("/getAvailableSlots", getAvailableSlots);
+// Get appointments with both startTime and endTime set
+router.get("/getAppointmentsWithTime", getAppointmentsWithTime);
+
+// Update appointment status (approve/reject)
+router.put("/updateAppointmentStatus/:id", updateAppointmentStatus);
 
 // Create appointment with slot
 router.post("/createAppointmentWithSlot", createAppointmentWithSlot);
