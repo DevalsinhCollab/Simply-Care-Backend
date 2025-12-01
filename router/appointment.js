@@ -27,13 +27,14 @@
 
 const express = require("express");
 const { createAppointment, getAllAppointments, getAppointmentById, updateAppointment, deleteAppointment, generateReport, generateCertificate, generateReceipt, generatePrescription, getAppointmentsByPatient, getAvailableSlots, createAppointmentWithSlot, getAppointmentsWithTime, updateAppointmentStatus } = require("../controller/appointment");
+const verifyToken = require("../middleware/verifyToken");
 const router = express.Router();
 
 // Create appointment
 router.post("/createAppointment", createAppointment);
 
 // Get all appointments
-router.get("/getAllAppointments", getAllAppointments);
+router.get("/getAllAppointments",verifyToken, getAllAppointments);
 
 // Get appointment by ID
 router.get("/getAppointmentById/:id", getAppointmentById);
@@ -50,7 +51,7 @@ router.get("/getAppointmentsByPatient", getAppointmentsByPatient);
 // Get available slots for a doctor
 router.get("/getAvailableSlots", getAvailableSlots);
 // Get appointments with both startTime and endTime set
-router.get("/getAppointmentsWithTime", getAppointmentsWithTime);
+router.get("/getAppointmentsWithTime" ,verifyToken, getAppointmentsWithTime);
 
 // Update appointment status (approve/reject)
 router.put("/updateAppointmentStatus/:id", updateAppointmentStatus);

@@ -6,6 +6,7 @@ const {
   deleteDoctor,
   searchDoctors,
 } = require("../controller/doctor");
+const verifyToken = require("../middleware/verifyToken");
 
 const router = express.Router();
 
@@ -13,6 +14,6 @@ router.post("/adddoctor", addDoctor);
 router.get("/getdoctors", getDoctors);
 router.put("/updatedoctor/:id", updateDoctor);
 router.put("/deletedoctor/:id", deleteDoctor);
-router.get("/searchdoctors", searchDoctors);
+router.get("/searchdoctors", verifyToken, searchDoctors);
 
 module.exports = router;

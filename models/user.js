@@ -36,14 +36,19 @@ const userSchema = mongoose.Schema(
       enum: ["A", "U", "D"],
       default: "U",
     },
+    doctorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "doctor",
+      default: null,
+    },
     // docSpeciality: {
     //   type: String,
     //   enum: ["PH", "NE"],
     // },
-    docSpeciality: {
-      type: String,
-      enum: ["Physiotherapy", "Counseller","Physician"],
-    },
+    // docSpeciality: {
+    //   type: String,
+    //   enum: ["Physiotherapy", "Counseller","Physician"],
+    // },
   },
   {
     timestamps: true,

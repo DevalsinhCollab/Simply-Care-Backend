@@ -91,6 +91,7 @@ exports.verifyOtp = async (req, res) => {
     JWT_DATA = {
       userId: user.id,
       role: user.role,
+       doctorId: user.doctorId,
     };
 
     const expiresTime = user.keepMeLoggedIn ? "24h" : "24h";

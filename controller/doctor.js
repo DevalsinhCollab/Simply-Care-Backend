@@ -1,9 +1,10 @@
 const Doctor = require("../models/doctor");
+const User = require("../models/user");
 const PatientFormSchema = require("../models/patientform");
 
 exports.addDoctor = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, name, phone } = req.body;
 
     const existingDoctor = await Doctor.findOne({ email: email });
 
@@ -14,8 +15,16 @@ exports.addDoctor = async (req, res) => {
       });
     }
 
-
     const doctorData = await Doctor.create(req.body);
+
+    // Create user record with role "D" for doctor
+    await User.create({
+      name: name,
+      email: email,
+      phone: phone,
+      role: "D",
+      doctorId: doctorData._id,
+    });
 
     return res.status(200).json({
       success: true,
@@ -61,9 +70,15 @@ exports.getDoctors = async (req, res) => {
 exports.updateDoctor = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
+    const { name, email, phone } = req.body;
 
     const doctor = await Doctor.findByIdAndUpdate(id, req.body, { new: true });
+
+    // Update user record with same email
+    await User.updateOne(
+      { email: email },
+      { name: name, phone: phone, doctorId: id }
+    );
 
     await PatientFormSchema.updateMany(
       { "doctor._id": id },
@@ -84,11 +99,23 @@ exports.deleteDoctor = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const doctor = await Doctor.findByIdAndUpdate(
+    // Get doctor email before deleting
+    const doctor = await Doctor.findById(id);
+
+    // Delete doctor record
+    await Doctor.findByIdAndUpdate(
       id,
       { isDeleted: true },
       { new: true }
     );
+
+    // Clear doctorId from corresponding user record
+    if (doctor && doctor.email) {
+      await User.updateOne(
+        { email: doctor.email, role: "D" },
+        { doctorId: null }
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -103,8 +130,13 @@ exports.deleteDoctor = async (req, res) => {
 exports.searchDoctors = async (req, res) => {
   try {
     const { search } = req.query;
+    const  doctorId = req.user.doctorId
 
     let findObject = {isDeleted : false };
+
+    if(doctorId){
+      findObject._id = doctorId
+    }
 
     if (search && search !== "") {
       findObject = {

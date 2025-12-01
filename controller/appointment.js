@@ -212,7 +212,7 @@ exports.createAppointment = async (req, res) => {
       date,
       payment,
       patientFormId,
-      docApproval
+      docApproval,
     } = req.body;
 
     const newAppointment = await Appointment.create({
@@ -223,7 +223,7 @@ exports.createAppointment = async (req, res) => {
       description,
       date,
       payment,
-      docApproval
+      docApproval,
     });
 
     return res.status(201).json({
@@ -306,7 +306,18 @@ exports.getAllAppointments = async (req, res) => {
       uniquePatient,
     } = req.query;
 
-    let filter = { isDeleted: false , docApproval : "approved" };
+    let filter = {
+      isDeleted: false,
+      docApproval: { $ne: "pending", $exists: true },
+    };
+
+    const role = req.user.role;
+    const loggedDoctor = req.user.doctorId;
+
+    if (role == "D" && loggedDoctor) {
+      filter.doctorId = new mongoose.Types.ObjectId(loggedDoctor);
+    }
+
 
     if (doctorId) filter.doctorId = doctorId;
     if (patientId) filter.patientId = patientId;
@@ -339,7 +350,7 @@ exports.getAllAppointments = async (req, res) => {
         $lte: new Date(endDate),
       };
     }
-
+    
     /* ⭐ UNIQUE PATIENT MODE -------------------------------- */
     if (uniquePatient === "true") {
       const records = await Appointment.aggregate([
@@ -355,6 +366,7 @@ exports.getAllAppointments = async (req, res) => {
         { $skip: Number(page) * Number(pageSize) },
         { $limit: Number(pageSize) },
       ]);
+      console.log("uniquePatient", uniquePatient)
 
       // populate doctor & patient
       await Appointment.populate(records, [
@@ -513,6 +525,7 @@ exports.generateReport = async (req, res) => {
           doctorId: new mongoose.Types.ObjectId(doctor),
           date: { $gte: parsedStart, $lte: parsedEnd },
           isDeleted: false,
+          docApproval: "approved",
         },
       },
       {
@@ -1749,8 +1762,8 @@ exports.getAppointmentsByPatient = async (req, res) => {
       message: error.message,
     });
   }
-}
-    exports.getAppointmentsWithTime = async (req, res) => {
+};
+exports.getAppointmentsWithTime = async (req, res) => {
   try {
     // const appointments = await Appointment.find({
     //   startTime: { $exists: true, $ne: null, $ne: "" },
@@ -1760,9 +1773,16 @@ exports.getAppointmentsByPatient = async (req, res) => {
     //   .populate("doctorId")
     //   .populate("patientId")
     //   .sort({ appointmentDate: -1 });
-    const appointments = await Appointment.find({docApproval : "pending",
-      isDeleted: false,
-    })
+
+    const doctorId = req.user.doctorId;
+
+    const findObject = { docApproval: "pending", isDeleted: false };
+
+    if (doctorId) {
+      findObject.doctorId = doctorId;
+    }
+
+    const appointments = await Appointment.find(findObject)
       .populate("doctorId")
       .populate("patientId")
       .sort({ appointmentDate: -1 });
@@ -1867,16 +1887,26 @@ exports.getAvailableSlots = async (req, res) => {
     let currentHour = startHour;
     let currentMin = startMin;
 
-    while (currentHour < endHour || (currentHour === endHour && currentMin < endMin)) {
+    while (
+      currentHour < endHour ||
+      (currentHour === endHour && currentMin < endMin)
+    ) {
       const nextHour = currentMin + 60 === 60 ? currentHour + 1 : currentHour;
       const nextMin = currentMin + 60 === 60 ? 0 : currentMin + 60;
 
-      const slotStart = `${String(currentHour).padStart(2, "0")}:${String(currentMin).padStart(2, "0")}`;
-      const slotEnd = `${String(nextHour).padStart(2, "0")}:${String(nextMin).padStart(2, "0")}`;
+      const slotStart = `${String(currentHour).padStart(2, "0")}:${String(
+        currentMin
+      ).padStart(2, "0")}`;
+      const slotEnd = `${String(nextHour).padStart(2, "0")}:${String(
+        nextMin
+      ).padStart(2, "0")}`;
 
       // Check if slot is booked
       const isBooked = bookedAppointments.some(
-        (apt) => apt.startTime === slotStart && apt.endTime === slotEnd
+        (apt) =>
+          apt.startTime === slotStart &&
+          apt.endTime === slotEnd &&
+          apt.docApproval !== "rejected"
       );
 
       slots.push({
@@ -1935,6 +1965,7 @@ exports.createAppointmentWithSlot = async (req, res) => {
       startTime,
       endTime,
       isDeleted: false,
+      docApproval: "approved",
     });
 
     if (existingAppointment) {
@@ -1953,7 +1984,9 @@ exports.createAppointmentWithSlot = async (req, res) => {
 
     // ✅ CASE 1: Check if patient already exists in Patient DB by phone
     if (patientData && patientData.phone) {
-      const existingPatient = await Patient.findOne({ phone: patientData.phone });
+      const existingPatient = await Patient.findOne({
+        phone: patientData.phone,
+      });
 
       if (existingPatient) {
         finalPatientId = existingPatient._id;
@@ -2000,7 +2033,9 @@ exports.createAppointmentWithSlot = async (req, res) => {
             state: patientData.state || "",
             area: patientData.area || "",
           },
-          doctor: doctorData ? { _id: doctorData._id, name: doctorData.name } : null,
+          doctor: doctorData
+            ? { _id: doctorData._id, name: doctorData.name }
+            : null,
           // treatment: treatment || "",
           description: description || "",
         });
