@@ -111,6 +111,7 @@ exports.verifyOtp = async (req, res) => {
         phone: user.phone,
         role: user.role,
         docSpeciality: user.docSpeciality,
+        doctorId : user.doctorId
       },
     });
   } catch (error) {

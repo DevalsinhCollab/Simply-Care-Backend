@@ -1848,6 +1848,7 @@ exports.updateAppointmentStatus = async (req, res) => {
 exports.getAvailableSlots = async (req, res) => {
   try {
     const { doctorId, appointmentDate } = req.query;
+    const DoctorUnavailability = require("../models/DoctorUnavailability");
 
     if (!doctorId || !appointmentDate) {
       return res.status(400).json({
@@ -1879,6 +1880,95 @@ exports.getAvailableSlots = async (req, res) => {
       isDeleted: false,
     });
 
+    // Get doctor unavailability
+    const unavailability = await DoctorUnavailability.findOne({ doctorId });
+
+    // Check if date is full day off
+    const appointmentDateObj = new Date(appointmentDate);
+    const dayName = appointmentDateObj.toLocaleDateString("en-US", { weekday: "long" });
+    
+    let isFullDayOff = false;
+    let unavailabilityReason = "";
+    const unavailableCustomSlots = [];
+
+    if (unavailability) {
+      // Check full day dates
+      isFullDayOff = unavailability.fullDayDates.some(
+        (item) =>
+          new Date(item.date).toDateString() === appointmentDateObj.toDateString()
+      );
+
+      if (isFullDayOff) {
+        const fullDayItem = unavailability.fullDayDates.find(
+          (item) =>
+            new Date(item.date).toDateString() === appointmentDateObj.toDateString()
+        );
+        unavailabilityReason = fullDayItem?.reason || "Doctor not available";
+      }
+
+      // Check weekly off
+      // if (!isFullDayOff && unavailability.weeklyOff.includes(dayName)) {
+      //   isFullDayOff = true;
+      //   unavailabilityReason = `Weekly off on ${dayName}`;
+      // }
+
+      // Get custom unavailable slots for this date
+      const customSlotEntry = unavailability.customSlots.find(
+        (item) =>
+          new Date(item.date).toDateString() === appointmentDateObj.toDateString()
+      );
+
+      if (customSlotEntry) {
+        unavailableCustomSlots.push(
+          ...customSlotEntry.slots.map((slot) => ({
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          }))
+        );
+      }
+    }
+
+    // If full day off, return all slots as unavailable
+    if (isFullDayOff) {
+      const slots = [];
+      const [startHour, startMin] = startTime.split(":").map(Number);
+      const [endHour, endMin] = endTime.split(":").map(Number);
+
+      let currentHour = startHour;
+      let currentMin = startMin;
+
+      while (
+        currentHour < endHour ||
+        (currentHour === endHour && currentMin < endMin)
+      ) {
+        const nextHour = currentMin + 60 === 60 ? currentHour + 1 : currentHour;
+        const nextMin = currentMin + 60 === 60 ? 0 : currentMin + 60;
+
+        const slotStart = `${String(currentHour).padStart(2, "0")}:${String(
+          currentMin
+        ).padStart(2, "0")}`;
+        const slotEnd = `${String(nextHour).padStart(2, "0")}:${String(
+          nextMin
+        ).padStart(2, "0")}`;
+
+        slots.push({
+          startTime: slotStart,
+          endTime: slotEnd,
+          isBooked: true,
+          isHoliday: true,
+          reason: unavailabilityReason,
+        });
+
+        currentHour = nextHour;
+        currentMin = nextMin;
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: slots,
+      });
+    }
+
     // Generate 1-hour slots
     const slots = [];
     const [startHour, startMin] = startTime.split(":").map(Number);
@@ -1901,7 +1991,7 @@ exports.getAvailableSlots = async (req, res) => {
         nextMin
       ).padStart(2, "0")}`;
 
-      // Check if slot is booked
+      // Check if slot is booked by patient
       const isBooked = bookedAppointments.some(
         (apt) =>
           apt.startTime === slotStart &&
@@ -1909,10 +1999,18 @@ exports.getAvailableSlots = async (req, res) => {
           apt.docApproval !== "rejected"
       );
 
+      // Check if slot is in unavailable custom slots
+      const isCustomUnavailable = unavailableCustomSlots.some(
+        (slot) => slot.startTime === slotStart && slot.endTime === slotEnd
+      );
+
       slots.push({
         startTime: slotStart,
         endTime: slotEnd,
-        isBooked,
+        isBooked,           // Patient already booked
+        isUnavailable: isCustomUnavailable,  // Doctor marked as unavailable (custom slot)
+        isHoliday: false,    // Not a full day/weekly off (handled above)
+        isAvailable: !isBooked && !isCustomUnavailable,  // Can be booked
       });
 
       currentHour = nextHour;
