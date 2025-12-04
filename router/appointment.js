@@ -31,7 +31,7 @@ const verifyToken = require("../middleware/verifyToken");
 const router = express.Router();
 
 // Create appointment
-router.post("/createAppointment", createAppointment);
+router.post("/createAppointment", verifyToken,  createAppointment);
 
 // Get all appointments
 router.get("/getAllAppointments",verifyToken, getAllAppointments);
@@ -40,7 +40,7 @@ router.get("/getAllAppointments",verifyToken, getAllAppointments);
 router.get("/getAppointmentById/:id", getAppointmentById);
 
 // Update appointment
-router.put("/updateAppointment/:id", updateAppointment);
+router.put("/updateAppointment/:id",verifyToken, updateAppointment);
 
 // Delete appointment
 router.put("/deleteAppointment/:id", deleteAppointment);

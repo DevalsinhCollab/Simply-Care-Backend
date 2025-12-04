@@ -226,7 +226,7 @@ exports.createAppointment = async (req, res) => {
     if (initialPaid > 0) {
       paymentLog.push({
         paidAmount: initialPaid,
-        receiveBy: req.user && (req.user._id || req.user.id),
+        receiveBy: req.user && req.user.userId,
         paymentDate: new Date(),
       });
     }
@@ -338,7 +338,6 @@ exports.getAllAppointments = async (req, res) => {
       filter.doctorId = new mongoose.Types.ObjectId(loggedDoctor);
     }
 
-
     if (doctorId) filter.doctorId = doctorId;
     if (patientId) filter.patientId = patientId;
 
@@ -370,7 +369,7 @@ exports.getAllAppointments = async (req, res) => {
         $lte: new Date(endDate),
       };
     }
-    
+
     /* ⭐ UNIQUE PATIENT MODE -------------------------------- */
     if (uniquePatient === "true") {
       const records = await Appointment.aggregate([
@@ -386,12 +385,12 @@ exports.getAllAppointments = async (req, res) => {
         { $skip: Number(page) * Number(pageSize) },
         { $limit: Number(pageSize) },
       ]);
-      console.log("uniquePatient", uniquePatient)
 
       // populate doctor & patient
       await Appointment.populate(records, [
         { path: "doctorId" },
         { path: "patientId" },
+         { path: "paymentLog.receiveBy" },
       ]);
 
       const total = await Appointment.distinct("patientId", filter);
@@ -404,6 +403,7 @@ exports.getAllAppointments = async (req, res) => {
     const data = await Appointment.find(filter)
       .populate("doctorId")
       .populate("patientId")
+      .populate("paymentLog.receiveBy") // ⭐ NEW population
       .sort({ date: -1 })
       .skip(Number(page) * Number(pageSize))
       .limit(Number(pageSize));
@@ -426,7 +426,8 @@ exports.getAppointmentById = async (req, res) => {
       isDeleted: false,
     })
       .populate("doctorId")
-      .populate("patientId");
+      .populate("patientId")
+      .populate("paymentLog.receiveBy"); // ⭐ NEW population;
 
     if (!appointment) {
       return res.status(404).json({
@@ -456,16 +457,26 @@ exports.updateAppointment = async (req, res) => {
 
     const appointment = await Appointment.findById(id);
     if (!appointment) {
-      return res.status(404).json({ success: false, message: "Appointment not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Appointment not found" });
     }
 
     // Handle payment update logic. Treat req.body.paidAmount as an incoming payment (to be added).
-    const incomingPaid = req.body.paidAmount !== undefined ? Number(req.body.paidAmount) : null;
-    const incomingTotalPayment = req.body.payment !== undefined ? Number(req.body.payment) : null;
+    const incomingPaid =
+      req.body.paidAmount !== undefined ? Number(req.body.paidAmount) : null;
+    const incomingTotalPayment =
+      req.body.payment !== undefined ? Number(req.body.payment) : null;
     const incomingPaymentMode = req.body.paymentMode;
 
     // Apply non-payment fields from request body
-    const skipKeys = ["paidAmount", "paymentLog", "remainingAmount", "payment", "paymentMode"];
+    const skipKeys = [
+      "paidAmount",
+      "paymentLog",
+      "remainingAmount",
+      "payment",
+      "paymentMode",
+    ];
     Object.keys(req.body || {}).forEach((key) => {
       if (!skipKeys.includes(key)) {
         appointment[key] = req.body[key];
@@ -491,7 +502,7 @@ exports.updateAppointment = async (req, res) => {
         appointment.paymentLog = appointment.paymentLog || [];
         appointment.paymentLog.push({
           paidAmount: delta,
-          receiveBy: req.user && (req.user._id || req.user.id),
+          receiveBy: req.user && req.user.userId,
           paymentDate: new Date(),
         });
       }
@@ -501,11 +512,15 @@ exports.updateAppointment = async (req, res) => {
     }
 
     // Recalculate remaining amount based on current total and paid
-    appointment.remainingAmount = (Number(appointment.payment) || 0) - (Number(appointment.paidAmount) || 0);
+    appointment.remainingAmount =
+      (Number(appointment.payment) || 0) -
+      (Number(appointment.paidAmount) || 0);
 
     await appointment.save();
 
-    const updatedAppointment = await Appointment.findById(id).populate("doctorId").populate("patientId");
+    const updatedAppointment = await Appointment.findById(id)
+      .populate("doctorId")
+      .populate("patientId");
 
     return res.status(200).json({
       success: true,
@@ -1947,8 +1962,10 @@ exports.getAvailableSlots = async (req, res) => {
 
     // Check if date is full day off
     const appointmentDateObj = new Date(appointmentDate);
-    const dayName = appointmentDateObj.toLocaleDateString("en-US", { weekday: "long" });
-    
+    const dayName = appointmentDateObj.toLocaleDateString("en-US", {
+      weekday: "long",
+    });
+
     let isFullDayOff = false;
     let unavailabilityReason = "";
     const unavailableCustomSlots = [];
@@ -1957,13 +1974,15 @@ exports.getAvailableSlots = async (req, res) => {
       // Check full day dates
       isFullDayOff = unavailability.fullDayDates.some(
         (item) =>
-          new Date(item.date).toDateString() === appointmentDateObj.toDateString()
+          new Date(item.date).toDateString() ===
+          appointmentDateObj.toDateString()
       );
 
       if (isFullDayOff) {
         const fullDayItem = unavailability.fullDayDates.find(
           (item) =>
-            new Date(item.date).toDateString() === appointmentDateObj.toDateString()
+            new Date(item.date).toDateString() ===
+            appointmentDateObj.toDateString()
         );
         unavailabilityReason = fullDayItem?.reason || "Doctor not available";
       }
@@ -1977,7 +1996,8 @@ exports.getAvailableSlots = async (req, res) => {
       // Get custom unavailable slots for this date
       const customSlotEntry = unavailability.customSlots.find(
         (item) =>
-          new Date(item.date).toDateString() === appointmentDateObj.toDateString()
+          new Date(item.date).toDateString() ===
+          appointmentDateObj.toDateString()
       );
 
       if (customSlotEntry) {
@@ -2069,10 +2089,10 @@ exports.getAvailableSlots = async (req, res) => {
       slots.push({
         startTime: slotStart,
         endTime: slotEnd,
-        isBooked,           // Patient already booked
-        isUnavailable: isCustomUnavailable,  // Doctor marked as unavailable (custom slot)
-        isHoliday: false,    // Not a full day/weekly off (handled above)
-        isAvailable: !isBooked && !isCustomUnavailable,  // Can be booked
+        isBooked, // Patient already booked
+        isUnavailable: isCustomUnavailable, // Doctor marked as unavailable (custom slot)
+        isHoliday: false, // Not a full day/weekly off (handled above)
+        isAvailable: !isBooked && !isCustomUnavailable, // Can be booked
       });
 
       currentHour = nextHour;
