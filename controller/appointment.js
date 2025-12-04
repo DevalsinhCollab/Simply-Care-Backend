@@ -211,9 +211,25 @@ exports.createAppointment = async (req, res) => {
       description,
       date,
       payment,
+      paymentMode,
+      paidAmount,
       patientFormId,
       docApproval,
     } = req.body;
+
+    // Normalize numeric values
+    const totalPayment = Number(payment) || 0;
+    const initialPaid = Number(paidAmount) || 0;
+    const remaining = totalPayment - initialPaid;
+
+    const paymentLog = [];
+    if (initialPaid > 0) {
+      paymentLog.push({
+        paidAmount: initialPaid,
+        receiveBy: req.user && (req.user._id || req.user.id),
+        paymentDate: new Date(),
+      });
+    }
 
     const newAppointment = await Appointment.create({
       doctorId: doctor && doctor._id,
@@ -222,7 +238,11 @@ exports.createAppointment = async (req, res) => {
       treatment,
       description,
       date,
-      payment,
+      payment: totalPayment,
+      paymentMode: paymentMode || "cash",
+      paidAmount: initialPaid,
+      remainingAmount: remaining,
+      paymentLog,
       docApproval,
     });
 
@@ -432,18 +452,60 @@ exports.getAppointmentById = async (req, res) => {
 // ===========================
 exports.updateAppointment = async (req, res) => {
   try {
-    const updatedAppointment = await Appointment.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
+    const { id } = req.params;
 
-    if (!updatedAppointment) {
-      return res.status(404).json({
-        success: false,
-        message: "Appointment not found",
-      });
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: "Appointment not found" });
     }
+
+    // Handle payment update logic. Treat req.body.paidAmount as an incoming payment (to be added).
+    const incomingPaid = req.body.paidAmount !== undefined ? Number(req.body.paidAmount) : null;
+    const incomingTotalPayment = req.body.payment !== undefined ? Number(req.body.payment) : null;
+    const incomingPaymentMode = req.body.paymentMode;
+
+    // Apply non-payment fields from request body
+    const skipKeys = ["paidAmount", "paymentLog", "remainingAmount", "payment", "paymentMode"];
+    Object.keys(req.body || {}).forEach((key) => {
+      if (!skipKeys.includes(key)) {
+        appointment[key] = req.body[key];
+      }
+    });
+
+    // If total payment is updated explicitly, update it
+    if (incomingTotalPayment !== null) {
+      appointment.payment = incomingTotalPayment;
+    }
+
+    if (incomingPaymentMode) {
+      appointment.paymentMode = incomingPaymentMode;
+    }
+
+    if (incomingPaid !== null) {
+      // Treat incomingPaid as the new total paid amount. Compute delta = new - old.
+      const oldPaid = Number(appointment.paidAmount) || 0;
+      const newPaid = Number(incomingPaid) || 0;
+      const delta = newPaid - oldPaid;
+
+      if (delta > 0) {
+        appointment.paymentLog = appointment.paymentLog || [];
+        appointment.paymentLog.push({
+          paidAmount: delta,
+          receiveBy: req.user && (req.user._id || req.user.id),
+          paymentDate: new Date(),
+        });
+      }
+
+      // Update paidAmount to the new absolute value (even if delta <= 0)
+      appointment.paidAmount = newPaid;
+    }
+
+    // Recalculate remaining amount based on current total and paid
+    appointment.remainingAmount = (Number(appointment.payment) || 0) - (Number(appointment.paidAmount) || 0);
+
+    await appointment.save();
+
+    const updatedAppointment = await Appointment.findById(id).populate("doctorId").populate("patientId");
 
     return res.status(200).json({
       success: true,

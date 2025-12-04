@@ -90,11 +90,6 @@ const appointmentSchema = new mongoose.Schema(
       required: false,
     },
 
-    payment: {
-      type: Number,
-      required: false,
-      default: 0,
-    },
     visitStatus: {
       type: Boolean,
       default: false,
@@ -104,6 +99,39 @@ const appointmentSchema = new mongoose.Schema(
       enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
+    payment: {
+      type: Number,
+      required: false,
+      default: 0,
+    },
+    paymentMode: {
+      type: String,
+      enum: ["cash", "bank"],
+      default: "cash",
+    },
+    paidAmount: {
+      type: Number,
+      default: 0,
+    },
+    remainingAmount: {
+      type: Number,
+      default: 0,
+    },
+    paymentLog: [
+      {
+        paidAmount: {
+          type: Number,
+        },
+        receiveBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "user",
+        },
+        paymentDate: {
+          type: String,
+        },
+      },
+    ],
+
     isDeleted: {
       type: Boolean,
       default: false,
