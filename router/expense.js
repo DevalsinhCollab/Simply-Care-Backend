@@ -6,6 +6,7 @@ const {
   updateExpense,
   deleteExpense,
   getExpenseSummary,
+  getExpenseStats,
 } = require('../controller/expense');
 
 const router = express.Router();
@@ -27,5 +28,8 @@ router.put('/deleteExpense/:id', deleteExpense);
 
 // Get expense summary
 router.get('/getExpenseSummary', getExpenseSummary);
+
+// Get expense statistics for dashboard
+router.get('/getExpenseStats', getExpenseStats);
 
 module.exports = router;
