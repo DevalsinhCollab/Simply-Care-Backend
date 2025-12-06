@@ -16,7 +16,10 @@ exports.createExpense = async (req, res) => {
       description,
       amount: Number(amount),
       expenseDate: expenseDate || new Date(),
-      month: month || new Date().toISOString().split('T')[0],
+      month: month || (() => {
+        const now = new Date();
+        return `${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()}`;
+      })(),
       category: category || 'other',
     });
 
@@ -36,11 +39,26 @@ exports.createExpense = async (req, res) => {
 // Get all expenses
 exports.getAllExpenses = async (req, res) => {
   try {
-    const { month, category, page = 0, pageSize = 10 } = req.query;
+    const { month, category, date, page = 0, pageSize = 10 } = req.query;
 
     let filter = { isDeleted: false };
 
-    if (month) filter.month = month;
+    // Filter by month or specific date
+    if (month) {
+      filter.month = month;
+    } else if (date) {
+      // Filter by specific date
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+      
+      filter.expenseDate = {
+        $gte: startDate,
+        $lte: endDate,
+      };
+    }
+
     if (category) filter.category = category;
 
     const skip = Number(page) * Number(pageSize);
@@ -161,10 +179,24 @@ exports.deleteExpense = async (req, res) => {
 // Get expense summary (total by category, total expenses, etc.)
 exports.getExpenseSummary = async (req, res) => {
   try {
-    const { month } = req.query;
+    const { month, date } = req.query;
 
     let filter = { isDeleted: false };
-    if (month) filter.month = month;
+    
+    if (month) {
+      filter.month = month;
+    } else if (date) {
+      // Filter by specific date
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+      
+      filter.expenseDate = {
+        $gte: startDate,
+        $lte: endDate,
+      };
+    }
 
     const summary = await Expense.aggregate([
       { $match: filter },
@@ -201,3 +233,65 @@ exports.getExpenseSummary = async (req, res) => {
     });
   }
 };
+
+// Get expense statistics for dashboard (with count and breakdown)
+exports.getExpenseStats = async (req, res) => {
+  try {
+    const { month, date } = req.query;
+
+    let filter = { isDeleted: false };
+
+    if (month) {
+      // month format: MM-YYYY → convert to ^YYYY-MM
+      const [mm, yyyy] = month.split("-");
+      filter.month = { $regex: new RegExp(`^${yyyy}-${mm}`) };
+    } else if (date) {
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+
+      filter.expenseDate = { $gte: startDate, $lte: endDate };
+    }
+
+    console.log("Filter for expense stats:", filter);
+
+    const expenseCount = await Expense.countDocuments(filter);
+
+    const summary = await Expense.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: "$category",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalExpense = await Expense.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        expenseCount,
+        totalExpense: totalExpense[0]?.total || 0,
+        byCategory: summary,
+      },
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
