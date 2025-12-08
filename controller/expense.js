@@ -295,3 +295,49 @@ exports.getExpenseStats = async (req, res) => {
   }
 };
 
+// Get expenses for export (with filters by date range and description)
+exports.getExpenseExport = async (req, res) => {
+  try {
+    const { startDate, endDate, description } = req.query;
+
+    let filter = { isDeleted: false };
+
+    // Filter by date range
+    if (startDate || endDate) {
+      filter.expenseDate = {};
+      
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        filter.expenseDate.$gte = start;
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.expenseDate.$lte = end;
+      }
+    }
+
+    // Filter by description (case-insensitive partial match)
+    if (description && description.trim()) {
+      filter.description = { $regex: description, $options: 'i' };
+    }
+
+    const expenses = await Expense.find(filter)
+      .sort({ expenseDate: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: expenses,
+      count: expenses.length,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+

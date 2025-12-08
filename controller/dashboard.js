@@ -3,6 +3,9 @@ const DoctorSchema = require("../models/doctor")
 const PatientFormSchema = require("../models/patientform")
 const Appointment = require("../models/appointment")
 const Expense = require("../models/expense")
+const XLSX = require('xlsx');
+const mongoose = require('mongoose');
+const moment = require('moment');
 
 exports.dashboardCount = async (req, res) => {
     try {
@@ -252,6 +255,185 @@ exports.getReceivedByPatient = async (req, res) => {
 
         return res.status(200).json({ success: true, data });
     } catch (error) {
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// Export received / patient transactions to Excel
+exports.exportReceivedExcel = async (req, res) => {
+  try {
+    const { patientId, startDate, endDate } = req.query;
+
+    let filter = { isDeleted: false };
+
+    if (patientId) {
+      filter.patientId = new mongoose.Types.ObjectId(patientId);
+    }
+
+    if (startDate && endDate) {
+      const sd = new Date(startDate);
+      sd.setHours(0, 0, 0, 0);
+      const ed = new Date(endDate);
+      ed.setHours(23, 59, 59, 999);
+      filter.date = { $gte: sd, $lte: ed };
+    }
+
+    // Fetch appointments only — include patient + doctor
+    const appts = await Appointment.find(filter)
+      .populate('patientId')
+      .populate('doctorId')
+      .sort({ date: 1 })
+      .lean();
+
+    if (!appts || appts.length === 0) {
+      return res.status(404).json({ success: false, message: 'No records found for export' });
+    }
+
+    const rows = [];
+    let totalPayment = 0;
+    let totalPaid = 0;
+
+    for (const appt of appts) {
+      const apptDate = appt.appointmentDate || appt.date || appt.createdAt;
+      const dateObj = apptDate ? new Date(apptDate) : null;
+
+      const payment = Number(appt.payment || 0);
+      const paid = Number(appt.paidAmount || 0);
+
+      totalPayment += payment;
+      totalPaid += paid;
+
+            rows.push({
+                Date: dateObj ? moment(dateObj).format('DD/MM/YYYY') : '',
+                Month: dateObj ? moment(dateObj).format('MMMM YYYY') : '',
+        Patient: appt.patientId ? appt.patientId.name : '',
+        Phone: appt.patientId ? appt.patientId.phone : '',
+        Doctor: appt.doctorId ? appt.doctorId.name : '',
+        Payment: payment,
+        Paid: paid,
+      });
+    }
+
+    // Add total row
+    rows.push({
+      Date: '',
+      Month: 'Total',
+      Patient: '',
+      Phone: '',
+      Doctor: '',
+      Payment: totalPayment,
+      Paid: totalPaid,
+    });
+
+    // Create workbook
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Received Payments');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const fileName = patientId
+      ? `Patient_${patientId}_Received.xlsx`
+      : `Received_Payments.xlsx`;
+
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+
+    return res.send(buf);
+  } catch (error) {
+    console.error('Export error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.exportRemainingExcel = async (req, res) => {
+    try {
+        const { patientId, startDate, endDate } = req.query;
+
+        let filter = { isDeleted: false };
+
+        if (patientId) {
+            filter.patientId = new mongoose.Types.ObjectId(patientId);
+        }
+
+        if (startDate && endDate) {
+            const sd = new Date(startDate);
+            sd.setHours(0, 0, 0, 0);
+            const ed = new Date(endDate);
+            ed.setHours(23, 59, 59, 999);
+            filter.date = { $gte: sd, $lte: ed };
+        }
+
+        // Fetch appointments matching filter — include patient and doctor
+        const appts = await Appointment.find(filter)
+            .populate('patientId')
+            .populate('doctorId')
+            .sort({ date: 1 })
+            .lean();
+
+        if (!appts || appts.length === 0) {
+            return res.status(404).json({ success: false, message: 'No records found for export' });
+        }
+
+        // Build rows for Excel
+        const rows = [];
+        let totalPayment = 0;
+        let totalPaid = 0;
+        let totalRemaining = 0;
+
+        for (const appt of appts) {
+            const apptDate = appt.appointmentDate || appt.date || appt.createdAt;
+            const dateObj = apptDate ? new Date(apptDate) : null;
+
+            const payment = Number(appt.payment || 0);
+            const paid = Number(appt.paidAmount || 0);
+            const remaining = payment - paid;
+
+            totalPayment += payment;
+            totalPaid += paid;
+            totalRemaining += remaining;
+
+            rows.push({
+                Date: dateObj ? moment(dateObj).format('DD/MM/YYYY') : '',
+                Month: dateObj ? moment(dateObj).format('MMMM YYYY') : '',
+                Patient: appt.patientId ? appt.patientId.name : '',
+                Phone: appt.patientId ? appt.patientId.phone : '',
+                Doctor: appt.doctorId ? appt.doctorId.name : '',
+                Payment: payment,
+                Paid: paid,
+                Remaining: remaining,
+            });
+        }
+
+        // Add total row at the end
+        rows.push({
+            Date: '',
+            Month: 'Total',
+            Patient: '',
+            Phone: '',
+            Doctor: '',
+            Payment: totalPayment,
+            Paid: totalPaid,
+            Remaining: totalRemaining,
+        });
+
+        // Create workbook
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Transactions');
+
+        const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        const fileName = patientId ? `Patient_${patientId.name}_Transactions.xlsx` : `Remaining_Transactions.xlsx`;
+
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        return res.send(buf);
+    } catch (error) {
+        console.error('Export error:', error);
         return res.status(500).json({ success: false, message: error.message });
     }
 };
