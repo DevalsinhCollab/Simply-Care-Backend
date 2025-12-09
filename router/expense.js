@@ -7,6 +7,7 @@ const {
   deleteExpense,
   getExpenseSummary,
   getExpenseStats,
+  exportExpenseStats,
 } = require('../controller/expense');
 
 const router = express.Router();
@@ -31,5 +32,8 @@ router.get('/getExpenseSummary', getExpenseSummary);
 
 // Get expense statistics for dashboard
 router.get('/getExpenseStats', getExpenseStats);
+
+// Export expense statistics as Excel
+router.get('/exportExpenseStats', exportExpenseStats);
 
 module.exports = router;

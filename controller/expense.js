@@ -1,4 +1,5 @@
-const Expense = require('../models/expense');
+const Expense = require("../models/expense");
+const XLSX = require("xlsx");
 
 // Create expense
 exports.createExpense = async (req, res) => {
@@ -8,7 +9,7 @@ exports.createExpense = async (req, res) => {
     if (!description || amount === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Description and amount are required',
+        message: "Description and amount are required",
       });
     }
 
@@ -16,16 +17,20 @@ exports.createExpense = async (req, res) => {
       description,
       amount: Number(amount),
       expenseDate: expenseDate || new Date(),
-      month: month || (() => {
-        const now = new Date();
-        return `${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()}`;
-      })(),
-      category: category || 'other',
+      month:
+        month ||
+        (() => {
+          const now = new Date();
+          return `${(now.getMonth() + 1)
+            .toString()
+            .padStart(2, "0")}-${now.getFullYear()}`;
+        })(),
+      category: category || "other",
     });
 
     return res.status(201).json({
       success: true,
-      message: 'Expense created successfully',
+      message: "Expense created successfully",
       data: expense,
     });
   } catch (error) {
@@ -52,7 +57,7 @@ exports.getAllExpenses = async (req, res) => {
       startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(date);
       endDate.setHours(23, 59, 59, 999);
-      
+
       filter.expenseDate = {
         $gte: startDate,
         $lte: endDate,
@@ -94,7 +99,7 @@ exports.getExpenseById = async (req, res) => {
     if (!expense) {
       return res.status(404).json({
         success: false,
-        message: 'Expense not found',
+        message: "Expense not found",
       });
     }
 
@@ -130,13 +135,13 @@ exports.updateExpense = async (req, res) => {
     if (!expense) {
       return res.status(404).json({
         success: false,
-        message: 'Expense not found',
+        message: "Expense not found",
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Expense updated successfully',
+      message: "Expense updated successfully",
       data: expense,
     });
   } catch (error) {
@@ -159,13 +164,13 @@ exports.deleteExpense = async (req, res) => {
     if (!expense) {
       return res.status(404).json({
         success: false,
-        message: 'Expense not found',
+        message: "Expense not found",
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Expense deleted successfully',
+      message: "Expense deleted successfully",
       data: expense,
     });
   } catch (error) {
@@ -182,16 +187,17 @@ exports.getExpenseSummary = async (req, res) => {
     const { month, date } = req.query;
 
     let filter = { isDeleted: false };
-    
+
     if (month) {
-      filter.month = month;
+      const [mm, yyyy] = month.split("-");
+      filter.month = `${mm}-${yyyy}`;
     } else if (date) {
       // Filter by specific date
       const startDate = new Date(date);
       startDate.setHours(0, 0, 0, 0);
       const endDate = new Date(date);
       endDate.setHours(23, 59, 59, 999);
-      
+
       filter.expenseDate = {
         $gte: startDate,
         $lte: endDate,
@@ -202,8 +208,8 @@ exports.getExpenseSummary = async (req, res) => {
       { $match: filter },
       {
         $group: {
-          _id: '$category',
-          total: { $sum: '$amount' },
+          _id: "$category",
+          total: { $sum: "$amount" },
           count: { $sum: 1 },
         },
       },
@@ -214,7 +220,7 @@ exports.getExpenseSummary = async (req, res) => {
       {
         $group: {
           _id: null,
-          total: { $sum: '$amount' },
+          total: { $sum: "$amount" },
         },
       },
     ]);
@@ -241,10 +247,10 @@ exports.getExpenseStats = async (req, res) => {
 
     let filter = { isDeleted: false };
 
+    // month format: MM-YYYY → convert to ^YYYY-MM
     if (month) {
-      // month format: MM-YYYY → convert to ^YYYY-MM
       const [mm, yyyy] = month.split("-");
-      filter.month = { $regex: new RegExp(`^${yyyy}-${mm}`) };
+      filter.month = `${mm}-${yyyy}`;
     } else if (date) {
       const startDate = new Date(date);
       startDate.setHours(0, 0, 0, 0);
@@ -254,10 +260,9 @@ exports.getExpenseStats = async (req, res) => {
       filter.expenseDate = { $gte: startDate, $lte: endDate };
     }
 
-    console.log("Filter for expense stats:", filter);
-
     const expenseCount = await Expense.countDocuments(filter);
 
+    // Get category breakdown with descriptions
     const summary = await Expense.aggregate([
       { $match: filter },
       {
@@ -265,6 +270,12 @@ exports.getExpenseStats = async (req, res) => {
           _id: "$category",
           total: { $sum: "$amount" },
           count: { $sum: 1 },
+          descriptions: {
+            $push: {
+              description: "$description",
+              amount: "$amount",
+            },
+          },
         },
       },
     ]);
@@ -295,49 +306,203 @@ exports.getExpenseStats = async (req, res) => {
   }
 };
 
-// Get expenses for export (with filters by date range and description)
-exports.getExpenseExport = async (req, res) => {
+
+
+// // Export expense stats as Excel
+// exports.exportExpenseStats = async (req, res) => {
+//   try {
+//     const { month, date } = req.query;
+
+//     let filter = { isDeleted: false };
+
+//     if (month) {
+//       const [mm, yyyy] = month.split("-");
+//       filter.month = { $regex: new RegExp(`^${yyyy}-${mm}`) };
+//     } else if (date) {
+//       const startDate = new Date(date);
+//       startDate.setHours(0, 0, 0, 0);
+//       const endDate = new Date(date);
+//       endDate.setHours(23, 59, 59, 999);
+
+//       filter.expenseDate = { $gte: startDate, $lte: endDate };
+//     }
+
+//     // Get all expenses for the given filter
+//     const expenses = await Expense.find(filter).sort({ expenseDate: -1 }).lean();
+
+//     // Get summary stats
+//     const expenseCount = expenses.length;
+//     const totalExpense = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+//     // Group by category with descriptions
+//     const byCategory = {};
+//     expenses.forEach((exp) => {
+//       if (!byCategory[exp.category]) {
+//         byCategory[exp.category] = {
+//           total: 0,
+//           count: 0,
+//           descriptions: [],
+//         };
+//       }
+//       byCategory[exp.category].total += exp.amount;
+//       byCategory[exp.category].count += 1;
+//       byCategory[exp.category].descriptions.push(exp.description);
+//     });
+
+//     // Create Excel workbook with multiple sheets
+//     const wb = XLSX.utils.book_new();
+
+//     // Sheet 1: Summary
+//     const summaryData = [
+//       { 'Metric': 'Total Expenses', 'Value': totalExpense },
+//       { 'Metric': 'Total Count', 'Value': expenseCount },
+//       {},
+//       { 'Metric': 'Category Breakdown', 'Value': '' },
+//     ];
+
+//     Object.entries(byCategory).forEach(([category, data]) => {
+//       summaryData.push({
+//         'Metric': category.toUpperCase(),
+//         'Value': data.total,
+//         'Count': data.count,
+//         'Descriptions': data.descriptions.join('; '),
+//       });
+//     });
+
+//     const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+//     summarySheet['!cols'] = [
+//       { wch: 25 },
+//       { wch: 15 },
+//       { wch: 10 },
+//       { wch: 50 },
+//     ];
+//     XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+//     // Sheet 2: Detailed Expenses
+//     const detailedData = expenses.map((exp) => ({
+//       'Date': new Date(exp.expenseDate).toLocaleDateString('en-IN'),
+//       'Description': exp.description,
+//       'Category': exp.category,
+//       'Amount': exp.amount,
+//       'Month': exp.month,
+//     }));
+
+//     const detailedSheet = XLSX.utils.json_to_sheet(detailedData);
+//     detailedSheet['!cols'] = [
+//       { wch: 15 },
+//       { wch: 30 },
+//       { wch: 15 },
+//       { wch: 12 },
+//       { wch: 12 },
+//     ];
+
+//     // Add total row
+//     const totalRow = {
+//       'Date': 'TOTAL',
+//       'Description': '',
+//       'Category': '',
+//       'Amount': totalExpense,
+//       'Month': '',
+//     };
+//     detailedData.push(totalRow);
+//     XLSX.utils.book_append_sheet(wb, detailedSheet, 'Detailed');
+
+//     // Generate filename
+//     let filename = 'Expense_Stats';
+//     if (month) {
+//       filename += `_${month}`;
+//     } else if (date) {
+//       filename += `_${date}`;
+//     }
+//     filename += '.xlsx';
+
+//     // Send file
+//     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+//     res.setHeader(
+//       'Content-Type',
+//       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+//     );
+
+//     const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+//     res.send(buffer);
+//   } catch (error) {
+//     console.error('Export error:', error);
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
+exports.exportExpenseStats = async (req, res) => {
   try {
-    const { startDate, endDate, description } = req.query;
+    const { month, date } = req.query;
 
     let filter = { isDeleted: false };
 
-    // Filter by date range
-    if (startDate || endDate) {
-      filter.expenseDate = {};
-      
-      if (startDate) {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        filter.expenseDate.$gte = start;
-      }
-      
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        filter.expenseDate.$lte = end;
-      }
-    }
-
-    // Filter by description (case-insensitive partial match)
-    if (description && description.trim()) {
-      filter.description = { $regex: description, $options: 'i' };
+    if (month) {
+      const [mm, yyyy] = month.split("-");
+      filter.month = `${mm}-${yyyy}`;
+    } else if (date) {
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+      filter.expenseDate = { $gte: startDate, $lte: endDate };
     }
 
     const expenses = await Expense.find(filter)
       .sort({ expenseDate: -1 })
       .lean();
 
-    return res.status(200).json({
-      success: true,
-      data: expenses,
-      count: expenses.length,
+    const totalExpense = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+    const exportRows = expenses.map((exp) => ({
+      Date: new Date(exp.expenseDate).toLocaleDateString("en-IN"),
+      Description: exp.description,
+      Category: exp.category,
+      Amount: exp.amount,
+      Month: exp.month,
+    }));
+
+    // Add TOTAL row
+    exportRows.push({
+      Date: "TOTAL",
+      Description: "",
+      Amount: totalExpense,
+      Month: "",
+      Category: "",
     });
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(exportRows);
+
+    sheet["!cols"] = [
+      { wch: 15 },
+      { wch: 40 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, sheet, "Expenses");
+
+    let filename = "Expenses";
+    if (month) filename += `_${month}`;
+    if (date) filename += `_${date}`;
+    filename += ".xlsx";
+
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
+    return res.send(buffer);
   } catch (error) {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
+    console.error("Export error:", error);
+    res.status(400).json({ success: false, message: error.message });
   }
 };
-
