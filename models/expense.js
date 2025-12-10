@@ -28,6 +28,11 @@ const expenseSchema = new mongoose.Schema(
       enum: ['utilities', 'rent', 'supplies', 'maintenance' , 'salary', 'other'],
       default: 'other',
     },
+    paymentMode: {
+      type: String,
+      enum: ['cash', 'bank', 'check', 'upi' ,'other'],
+      default: 'cash',
+    },
     isDeleted: {
       type: Boolean,
       default: false,

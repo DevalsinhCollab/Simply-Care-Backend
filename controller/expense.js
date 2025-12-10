@@ -4,7 +4,8 @@ const XLSX = require("xlsx");
 // Create expense
 exports.createExpense = async (req, res) => {
   try {
-    const { description, amount, expenseDate, month, category } = req.body;
+    const { description, amount, expenseDate, month, category, paymentMode } =
+      req.body;
 
     if (!description || amount === undefined) {
       return res.status(400).json({
@@ -26,6 +27,7 @@ exports.createExpense = async (req, res) => {
             .padStart(2, "0")}-${now.getFullYear()}`;
         })(),
       category: category || "other",
+      paymentMode: paymentMode || "cash",
     });
 
     return res.status(201).json({
@@ -118,7 +120,10 @@ exports.getExpenseById = async (req, res) => {
 // Update expense
 exports.updateExpense = async (req, res) => {
   try {
-    const { description, amount, expenseDate, month, category } = req.body;
+    const { description, amount, expenseDate, month, category, paymentMode } =
+      req.body;
+
+      console.log(req.body);
 
     const expense = await Expense.findByIdAndUpdate(
       req.params.id,
@@ -128,6 +133,7 @@ exports.updateExpense = async (req, res) => {
         expenseDate,
         month,
         category,
+        paymentMode,
       },
       { new: true, runValidators: true }
     );
@@ -306,8 +312,6 @@ exports.getExpenseStats = async (req, res) => {
   }
 };
 
-
-
 // // Export expense stats as Excel
 // exports.exportExpenseStats = async (req, res) => {
 //   try {
@@ -462,6 +466,7 @@ exports.exportExpenseStats = async (req, res) => {
       Description: exp.description,
       Category: exp.category,
       Amount: exp.amount,
+      PaymentMode: exp.paymentMode,
       Month: exp.month,
     }));
 
@@ -470,6 +475,7 @@ exports.exportExpenseStats = async (req, res) => {
       Date: "TOTAL",
       Description: "",
       Amount: totalExpense,
+      PaymentMode: "",
       Month: "",
       Category: "",
     });

@@ -198,10 +198,68 @@ const path = require("path");
 const mongoose = require("mongoose");
 const { generateReceiptNumber } = require("../comman/comman");
 const Doctor = require("../models/doctor");
+const Patientform = require("../models/patientform");
 
 // ===========================
 // CREATE APPOINTMENT
 // ===========================
+// exports.createAppointment = async (req, res) => {
+//   try {
+//     const {
+//       doctor,
+//       patient,
+//       treatment,
+//       description,
+//       date,
+//       payment,
+//       paymentMode,
+//       paidAmount,
+//       patientFormId,
+//       docApproval,
+//     } = req.body;
+
+//     // Normalize numeric values
+//     const totalPayment = Number(payment) || 0;
+//     const initialPaid = Number(paidAmount) || 0;
+//     const remaining = totalPayment - initialPaid;
+
+//     const paymentLog = [];
+//     if (initialPaid > 0) {
+//       paymentLog.push({
+//         paidAmount: initialPaid,
+//         receiveBy: req.user && req.user.userId,
+//         paymentDate: new Date(),
+//       });
+//     }
+
+//     const newAppointment = await Appointment.create({
+//       doctorId: doctor && doctor._id,
+//       patientId: patient && patient._id,
+//       patientFormId,
+//       treatment,
+//       description,
+//       date,
+//       payment: totalPayment,
+//       paymentMode: paymentMode || "cash",
+//       paidAmount: initialPaid,
+//       remainingAmount: remaining,
+//       paymentLog,
+//       docApproval,
+//     });
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Appointment created successfully",
+//       data: newAppointment,
+//     });
+//   } catch (error) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
 exports.createAppointment = async (req, res) => {
   try {
     const {
@@ -231,10 +289,43 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
+    let finalPatientFormId = patientFormId;
+
+    // 👉 If patientFormId is not provided, create a new one
+    if (!finalPatientFormId) {
+      const newForm = await Patientform.create({
+        doctor: doctor ? { _id: doctor._id, name: doctor.name } : null,
+        patient: patient
+          ? {
+              _id: patient._id,
+              name: patient.name,
+              age: patient.age,
+              phone: patient.phone,
+              address: patient.address,
+              pincode: patient.pincode,
+              city: patient.city,
+              state: patient.state,
+              occupation: patient.occupation,
+              area: patient.area,
+              gender: patient.gender,
+            }
+          : null,
+        date,
+        description,
+        treatment,
+        payment: totalPayment,
+        paymentType: paymentMode || "cash",
+        assessBy: req.user?.name || null,
+      });
+
+      finalPatientFormId = newForm._id;
+    }
+
+    // 👉 Create Appointment with patientFormId (existing or newly created)
     const newAppointment = await Appointment.create({
       doctorId: doctor && doctor._id,
       patientId: patient && patient._id,
-      patientFormId,
+      patientFormId: finalPatientFormId,
       treatment,
       description,
       date,
@@ -390,7 +481,7 @@ exports.getAllAppointments = async (req, res) => {
       await Appointment.populate(records, [
         { path: "doctorId" },
         { path: "patientId" },
-         { path: "paymentLog.receiveBy" },
+        { path: "paymentLog.receiveBy" },
       ]);
 
       const total = await Appointment.distinct("patientId", filter);
@@ -538,26 +629,65 @@ exports.updateAppointment = async (req, res) => {
 // ===========================
 // DELETE APPOINTMENT
 // ===========================
+// exports.deleteAppointment = async (req, res) => {
+//   try {
+//     const deleted = await Appointment.findByIdAndUpdate(
+//       req.params.id,
+//       { isDeleted: true },
+//       { new: true }
+//     );
+
+//     if (!deleted) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Appointment not found",
+//       });
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Appointment deleted successfully",
+//       data: deleted,
+//     });
+//   } catch (error) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
+
 exports.deleteAppointment = async (req, res) => {
   try {
-    const deleted = await Appointment.findByIdAndUpdate(
-      req.params.id,
-      { isDeleted: true },
-      { new: true }
-    );
+    const appt = await Appointment.findById(req.params.id);
 
-    if (!deleted) {
+    if (!appt) {
       return res.status(404).json({
         success: false,
         message: "Appointment not found",
       });
     }
 
+    // Soft delete the appointment
+    appt.isDeleted = true;
+    await appt.save();
+
+    // Delete related patient form (soft or hard)
+    if (appt.patientFormId) {
+      await Patientform.findByIdAndUpdate(
+        appt.patientFormId,
+        { isDeleted: true },
+        { new: true }
+      );
+    }
+
     return res.status(200).json({
       success: true,
-      message: "Appointment deleted successfully",
-      data: deleted,
+      message: "Appointment & Patient Form deleted successfully",
+      data: appt,
     });
+
   } catch (error) {
     return res.status(400).json({
       success: false,
@@ -565,6 +695,7 @@ exports.deleteAppointment = async (req, res) => {
     });
   }
 };
+
 
 // ===========================
 // GENERATE REPORT
@@ -2114,6 +2245,152 @@ exports.getAvailableSlots = async (req, res) => {
 // ===========================
 // CREATE APPOINTMENT WITH SLOT
 // ===========================
+// exports.createAppointmentWithSlot = async (req, res) => {
+//   try {
+//     const {
+//       doctorId,
+//       patientId,
+//       appointmentDate,
+//       startTime,
+//       endTime,
+//       treatment,
+//       description,
+//       patientData,
+//     } = req.body;
+
+//     // Validate required fields
+//     if (!doctorId || !patientId || !appointmentDate || !startTime || !endTime) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields",
+//       });
+//     }
+
+//     // Check if slot is already booked
+//     const existingAppointment = await Appointment.findOne({
+//       doctorId,
+//       appointmentDate: {
+//         $gte: new Date(appointmentDate).setHours(0, 0, 0, 0),
+//         $lt: new Date(appointmentDate).setHours(23, 59, 59, 999),
+//       },
+//       startTime,
+//       endTime,
+//       isDeleted: false,
+//       docApproval: "approved",
+//     });
+
+//     if (existingAppointment) {
+//       return res.status(409).json({
+//         success: false,
+//         message: "This time slot is already booked",
+//       });
+//     }
+
+//     const Patient = require("../models/patient");
+//     const PatientForm = require("../models/patientform");
+//     const Doctor = require("../models/doctor");
+
+//     let finalPatientId = patientId;
+//     let patientFormId = null;
+
+//     // ✅ CASE 1: Check if patient already exists in Patient DB by phone
+//     if (patientData && patientData.phone) {
+//       const existingPatient = await Patient.findOne({
+//         phone: patientData.phone,
+//       });
+
+//       if (existingPatient) {
+//         finalPatientId = existingPatient._id;
+//         console.log("✅ Patient already exists in Patient DB:", finalPatientId);
+//       } else {
+//         // Create new patient in Patient DB
+//         const newPatient = await Patient.create({
+//           name: patientData.name || "",
+//           phone: patientData.phone || "",
+//           email: patientData.email || "",
+//           age: patientData.age || "",
+//           gender: patientData.gender || "",
+//           occupation: patientData.occupation || "",
+//           address: patientData.address || "",
+//           pincode: patientData.pincode || "",
+//           city: patientData.city || "",
+//           state: patientData.state || "",
+//           area: patientData.area || "",
+//         });
+//         finalPatientId = newPatient._id;
+//         console.log("✅ New patient created in Patient DB:", finalPatientId);
+//       }
+
+//       // ✅ CASE 2: Check if PatientForm already exists with same phone AND name
+//       const existingPatientForm = await PatientForm.findOne({
+//         "patient.phone": patientData.phone,
+//         "patient.name": patientData.name,
+//       });
+
+//       if (!existingPatientForm) {
+//         // Create PatientForm only if it doesn't exist
+//         const doctorData = await Doctor.findById(doctorId);
+//         const newPatientForm = await PatientForm.create({
+//           patient: {
+//             _id: finalPatientId,
+//             name: patientData.name || "",
+//             phone: patientData.phone || "",
+//             age: patientData.age || "",
+//             gender: patientData.gender || "",
+//             occupation: patientData.occupation || "",
+//             address: patientData.address || "",
+//             pincode: patientData.pincode || "",
+//             city: patientData.city || "",
+//             state: patientData.state || "",
+//             area: patientData.area || "",
+//           },
+//           doctor: doctorData
+//             ? { _id: doctorData._id, name: doctorData.name }
+//             : null,
+//           // treatment: treatment || "",
+//           description: description || "",
+//         });
+//         patientFormId = newPatientForm._id;
+//         console.log("✅ New PatientForm created:", patientFormId);
+//       } else {
+//         // PatientForm already exists - use its ID
+//         patientFormId = existingPatientForm._id;
+//         console.log("✅ PatientForm already exists:", patientFormId);
+//       }
+//     }
+
+//     // Create new appointment with patientId and patientFormId
+//     const newAppointment = await Appointment.create({
+//       doctorId,
+//       patientId: finalPatientId,
+//       patientFormId: patientFormId,
+//       appointmentDate: new Date(appointmentDate),
+//       startTime,
+//       endTime,
+//       treatment,
+//       description: description || "",
+//       date: new Date(appointmentDate),
+//     });
+
+//     // Populate doctor and patient data
+//     const populatedAppointment = await Appointment.findById(newAppointment._id)
+//       .populate("doctorId", "name email phone docSpeciality")
+//       .populate("patientId", "name email phone")
+//       .populate("patientFormId");
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Appointment booked successfully",
+//       data: populatedAppointment,
+//     });
+//   } catch (error) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
 exports.createAppointmentWithSlot = async (req, res) => {
   try {
     const {
@@ -2127,15 +2404,14 @@ exports.createAppointmentWithSlot = async (req, res) => {
       patientData,
     } = req.body;
 
-    // Validate required fields
-    if (!doctorId || !patientId || !appointmentDate || !startTime || !endTime) {
+    if (!doctorId || !appointmentDate || !startTime || !endTime) {
       return res.status(400).json({
         success: false,
         message: "Missing required fields",
       });
     }
 
-    // Check if slot is already booked
+    // Check slot availability
     const existingAppointment = await Appointment.findOne({
       doctorId,
       appointmentDate: {
@@ -2160,22 +2436,19 @@ exports.createAppointmentWithSlot = async (req, res) => {
     const Doctor = require("../models/doctor");
 
     let finalPatientId = patientId;
-    let patientFormId = null;
 
-    // ✅ CASE 1: Check if patient already exists in Patient DB by phone
-    if (patientData && patientData.phone) {
-      const existingPatient = await Patient.findOne({
-        phone: patientData.phone,
-      });
+    // --------------------------------------------------------------------
+    // 1️⃣ MATCH PATIENT BY PHONE → SAME LOGIC AS OLD PATIENT MODEL
+    // --------------------------------------------------------------------
+    if (patientData?.phone) {
+      let existingPatient = await Patient.findOne({ phone: patientData.phone });
 
       if (existingPatient) {
         finalPatientId = existingPatient._id;
-        console.log("✅ Patient already exists in Patient DB:", finalPatientId);
       } else {
-        // Create new patient in Patient DB
         const newPatient = await Patient.create({
           name: patientData.name || "",
-          phone: patientData.phone || "",
+          phone: patientData.phone,
           email: patientData.email || "",
           age: patientData.age || "",
           gender: patientData.gender || "",
@@ -2186,62 +2459,51 @@ exports.createAppointmentWithSlot = async (req, res) => {
           state: patientData.state || "",
           area: patientData.area || "",
         });
+
         finalPatientId = newPatient._id;
-        console.log("✅ New patient created in Patient DB:", finalPatientId);
-      }
-
-      // ✅ CASE 2: Check if PatientForm already exists with same phone AND name
-      const existingPatientForm = await PatientForm.findOne({
-        "patient.phone": patientData.phone,
-        "patient.name": patientData.name,
-      });
-
-      if (!existingPatientForm) {
-        // Create PatientForm only if it doesn't exist
-        const doctorData = await Doctor.findById(doctorId);
-        const newPatientForm = await PatientForm.create({
-          patient: {
-            _id: finalPatientId,
-            name: patientData.name || "",
-            phone: patientData.phone || "",
-            age: patientData.age || "",
-            gender: patientData.gender || "",
-            occupation: patientData.occupation || "",
-            address: patientData.address || "",
-            pincode: patientData.pincode || "",
-            city: patientData.city || "",
-            state: patientData.state || "",
-            area: patientData.area || "",
-          },
-          doctor: doctorData
-            ? { _id: doctorData._id, name: doctorData.name }
-            : null,
-          // treatment: treatment || "",
-          description: description || "",
-        });
-        patientFormId = newPatientForm._id;
-        console.log("✅ New PatientForm created:", patientFormId);
-      } else {
-        // PatientForm already exists - use its ID
-        patientFormId = existingPatientForm._id;
-        console.log("✅ PatientForm already exists:", patientFormId);
       }
     }
 
-    // Create new appointment with patientId and patientFormId
+    // --------------------------------------------------------------------
+    // 2️⃣ ALWAYS CREATE A NEW PATIENT FORM (NO MATCHING, NO REUSE)
+    // --------------------------------------------------------------------
+    const doctorData = await Doctor.findById(doctorId);
+
+    const newPatientForm = await PatientForm.create({
+      doctor: doctorData && { _id: doctorData._id, name: doctorData.name },
+      patient: {
+        _id: finalPatientId,
+        name: patientData?.name || "",
+        phone: patientData?.phone || "",
+        age: patientData?.age,
+        gender: patientData?.gender,
+        occupation: patientData?.occupation,
+        address: patientData?.address,
+        pincode: patientData?.pincode,
+        city: patientData?.city,
+        state: patientData?.state,
+        area: patientData?.area,
+      },
+
+      description: description || "",
+      treatment: treatment || "",
+    });
+
+    // --------------------------------------------------------------------
+    // 3️⃣ CREATE APPOINTMENT WITH NEW patientFormId
+    // --------------------------------------------------------------------
     const newAppointment = await Appointment.create({
       doctorId,
       patientId: finalPatientId,
-      patientFormId: patientFormId,
+      patientFormId: newPatientForm._id,
       appointmentDate: new Date(appointmentDate),
       startTime,
       endTime,
       treatment,
-      description: description || "",
+      description,
       date: new Date(appointmentDate),
     });
 
-    // Populate doctor and patient data
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("doctorId", "name email phone docSpeciality")
       .populate("patientId", "name email phone")

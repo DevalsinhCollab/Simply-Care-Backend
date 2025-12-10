@@ -12,6 +12,11 @@ const patientSchema = mongoose.Schema(
       trim: true,
       default: null,
     },
+    email: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     gender: {
       type: String,
       trim: true,
