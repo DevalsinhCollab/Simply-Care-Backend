@@ -65,7 +65,6 @@ const patientSchema = new mongoose.Schema(
         },
         gender: {
             type: String,
-            trim: true,
             default: null,
         },
     },
@@ -94,6 +93,10 @@ const patientFormSchema = new mongoose.Schema(
         payment: {
             type: String,
             trim: true,
+        },
+        numOfSessions: {
+            type: Number,
+            default: 0,
         },
         treatment: {
             type: String,

@@ -353,30 +353,53 @@ exports.createAppointment = async (req, res) => {
 // ===========================
 // GET ALL APPOINTMENTS
 // ===========================
+
+
 // exports.getAllAppointments = async (req, res) => {
 //   try {
-//     const { page, pageSize, doctorId, patientId, startDate, endDate, search } =
-//       req.query;
+//     const {
+//       page = 0,
+//       pageSize = 10,
+//       doctorId,
+//       patientId,
+//       startDate,
+//       endDate,
+//       search,
+//       uniquePatient,
+//     } = req.query;
 
-//     let filter = { isDeleted: false };
+//     let filter = {
+//       isDeleted: false,
+//       docApproval: { $ne: "pending", $exists: true },
+//     };
+
+//     const role = req.user.role;
+//     const loggedDoctor = req.user.doctorId;
+
+//     if (role == "D" && loggedDoctor) {
+//       filter.doctorId = new mongoose.Types.ObjectId(loggedDoctor);
+//     }
 
 //     if (doctorId) filter.doctorId = doctorId;
 //     if (patientId) filter.patientId = patientId;
 
+//     // 🔍 Search doctors by name
 //     if (search) {
-//       const docs = await Doctor.find({
+//       const matchedDoctors = await Doctor.find({
 //         name: { $regex: search, $options: "i" },
 //       }).select("_id");
 
-//       filter.doctorId = { $in: docs.map((d) => d._id) };
+//       if (matchedDoctors.length === 0) {
+//         return res.json({ success: true, data: [], total: 0 });
+//       }
+
+//       filter.doctorId = {
+//         ...(filter.doctorId && { $in: [filter.doctorId] }),
+//         $in: matchedDoctors.map((d) => d._id),
+//       };
 //     }
 
-//     // if (startDate && endDate) {
-//     //   filter.date = {
-//     //     $gte: new Date(startDate),
-//     //     $lte: new Date(endDate)
-//     //   };
-//     // }
+//     // 📅 Date filter
 //     if (
 //       startDate &&
 //       endDate &&
@@ -389,12 +412,44 @@ exports.createAppointment = async (req, res) => {
 //       };
 //     }
 
+//     /* ⭐ UNIQUE PATIENT MODE -------------------------------- */
+//     if (uniquePatient === "true") {
+//       const records = await Appointment.aggregate([
+//         { $match: filter },
+//         { $sort: { date: -1 } }, // latest first
+//         {
+//           $group: {
+//             _id: "$patientId",
+//             doc: { $first: "$$ROOT" }, // pick latest appointment per patient
+//           },
+//         },
+//         { $replaceRoot: { newRoot: "$doc" } },
+//         { $skip: Number(page) * Number(pageSize) },
+//         { $limit: Number(pageSize) },
+//       ]);
+
+//       // populate doctor & patient
+//       await Appointment.populate(records, [
+//         { path: "doctorId" },
+//         { path: "patientId" },
+//         { path: "patientFormId" },
+//         // { path: "paymentLog.receiveBy" },
+//       ]);
+
+//       const total = await Appointment.distinct("patientId", filter);
+
+//       return res.json({ success: true, data: records, total: total.length });
+//     }
+//     /* ------------------------------------------------------ */
+
+//     // 🔄 DEFAULT MODE — Full appointment history
 //     const data = await Appointment.find(filter)
-//       .populate("doctorId")
+//       .populate("doctorId").populate("patientFormId")
 //       .populate("patientId")
-//       .skip(page * pageSize)
-//       .limit(pageSize)
-//       .sort({ date: -1 });
+//       // .populate("paymentLog.receiveBy") // ⭐ NEW population
+//       .sort({ date: -1 })
+//       .skip(Number(page) * Number(pageSize))
+//       .limit(Number(pageSize));
 
 //     const total = await Appointment.countDocuments(filter);
 
@@ -414,7 +469,6 @@ exports.getAllAppointments = async (req, res) => {
       startDate,
       endDate,
       search,
-      uniquePatient,
     } = req.query;
 
     let filter = {
@@ -425,14 +479,16 @@ exports.getAllAppointments = async (req, res) => {
     const role = req.user.role;
     const loggedDoctor = req.user.doctorId;
 
-    if (role == "D" && loggedDoctor) {
+    // 👨‍⚕️ Doctor login restriction
+    if (role === "D" && loggedDoctor) {
       filter.doctorId = new mongoose.Types.ObjectId(loggedDoctor);
     }
 
+    // 🔎 Direct filters
     if (doctorId) filter.doctorId = doctorId;
     if (patientId) filter.patientId = patientId;
 
-    // 🔍 Search doctors by name
+    // 🔍 Search by doctor name
     if (search) {
       const matchedDoctors = await Doctor.find({
         name: { $regex: search, $options: "i" },
@@ -442,13 +498,10 @@ exports.getAllAppointments = async (req, res) => {
         return res.json({ success: true, data: [], total: 0 });
       }
 
-      filter.doctorId = {
-        ...(filter.doctorId && { $in: [filter.doctorId] }),
-        $in: matchedDoctors.map((d) => d._id),
-      };
+      filter.doctorId = { $in: matchedDoctors.map((d) => d._id) };
     }
 
-    // 📅 Date filter
+    // 📅 Date range filter
     if (
       startDate &&
       endDate &&
@@ -461,41 +514,13 @@ exports.getAllAppointments = async (req, res) => {
       };
     }
 
-    /* ⭐ UNIQUE PATIENT MODE -------------------------------- */
-    if (uniquePatient === "true") {
-      const records = await Appointment.aggregate([
-        { $match: filter },
-        { $sort: { date: -1 } }, // latest first
-        {
-          $group: {
-            _id: "$patientId",
-            doc: { $first: "$$ROOT" }, // pick latest appointment per patient
-          },
-        },
-        { $replaceRoot: { newRoot: "$doc" } },
-        { $skip: Number(page) * Number(pageSize) },
-        { $limit: Number(pageSize) },
-      ]);
-
-      // populate doctor & patient
-      await Appointment.populate(records, [
-        { path: "doctorId" },
-        { path: "patientId" },
-        { path: "paymentLog.receiveBy" },
-      ]);
-
-      const total = await Appointment.distinct("patientId", filter);
-
-      return res.json({ success: true, data: records, total: total.length });
-    }
-    /* ------------------------------------------------------ */
-
-    // 🔄 DEFAULT MODE — Full appointment history
+    // 📄 Fetch all appointments
     const data = await Appointment.find(filter)
       .populate("doctorId")
       .populate("patientId")
-      .populate("paymentLog.receiveBy") // ⭐ NEW population
-      .sort({ date: -1 })
+      .populate("patientFormId")
+      // .populate("paymentLog.receiveBy")
+      .sort({ createdAt: -1 })
       .skip(Number(page) * Number(pageSize))
       .limit(Number(pageSize));
 
@@ -503,9 +528,13 @@ exports.getAllAppointments = async (req, res) => {
 
     res.json({ success: true, data, total });
   } catch (e) {
-    res.status(400).json({ success: false, message: e.message });
+    res.status(400).json({
+      success: false,
+      message: e.message,
+    });
   }
 };
+
 
 // ===========================
 // GET APPOINTMENT BY ID
@@ -518,7 +547,7 @@ exports.getAppointmentById = async (req, res) => {
     })
       .populate("doctorId")
       .populate("patientId")
-      .populate("paymentLog.receiveBy"); // ⭐ NEW population;
+      // .populate("paymentLog.receiveBy"); // ⭐ NEW population;
 
     if (!appointment) {
       return res.status(404).json({
@@ -2391,6 +2420,138 @@ exports.getAvailableSlots = async (req, res) => {
 //   }
 // };
 
+// exports.createAppointmentWithSlot = async (req, res) => {
+//   try {
+//     const {
+//       doctorId,
+//       patientId,
+//       appointmentDate,
+//       startTime,
+//       endTime,
+//       treatment,
+//       description,
+//       patientData,
+//     } = req.body;
+
+//     if (!doctorId || !appointmentDate || !startTime || !endTime) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required fields",
+//       });
+//     }
+
+//     // Check slot availability
+//     const existingAppointment = await Appointment.findOne({
+//       doctorId,
+//       appointmentDate: {
+//         $gte: new Date(appointmentDate).setHours(0, 0, 0, 0),
+//         $lt: new Date(appointmentDate).setHours(23, 59, 59, 999),
+//       },
+//       startTime,
+//       endTime,
+//       isDeleted: false,
+//       docApproval: "approved",
+//     });
+
+//     if (existingAppointment) {
+//       return res.status(409).json({
+//         success: false,
+//         message: "This time slot is already booked",
+//       });
+//     }
+
+//     const Patient = require("../models/patient");
+//     const PatientForm = require("../models/patientform");
+//     const Doctor = require("../models/doctor");
+
+//     let finalPatientId = patientId;
+
+//     // --------------------------------------------------------------------
+//     // 1️⃣ MATCH PATIENT BY PHONE → SAME LOGIC AS OLD PATIENT MODEL
+//     // --------------------------------------------------------------------
+//     if (patientData?.phone) {
+//       let existingPatient = await Patient.findOne({ phone: patientData.phone });
+
+//       if (existingPatient) {
+//         finalPatientId = existingPatient._id;
+//       } else {
+//         const newPatient = await Patient.create({
+//           name: patientData.name || "",
+//           phone: patientData.phone,
+//           email: patientData.email || "",
+//           age: patientData.age || "",
+//           gender: patientData.gender || "",
+//           occupation: patientData.occupation || "",
+//           address: patientData.address || "",
+//           pincode: patientData.pincode || "",
+//           city: patientData.city || "",
+//           state: patientData.state || "",
+//           area: patientData.area || "",
+//         });
+
+//         finalPatientId = newPatient._id;
+//       }
+//     }
+
+//     // --------------------------------------------------------------------
+//     // 2️⃣ ALWAYS CREATE A NEW PATIENT FORM (NO MATCHING, NO REUSE)
+//     // --------------------------------------------------------------------
+//     const doctorData = await Doctor.findById(doctorId);
+
+//     const newPatientForm = await PatientForm.create({
+//       doctor: doctorData && { _id: doctorData._id, name: doctorData.name },
+//       patient: {
+//         _id: finalPatientId,
+//         name: patientData?.name || "",
+//         phone: patientData?.phone || "",
+//         age: patientData?.age,
+//         gender: patientData?.gender,
+//         occupation: patientData?.occupation,
+//         address: patientData?.address,
+//         pincode: patientData?.pincode,
+//         city: patientData?.city,
+//         state: patientData?.state,
+//         area: patientData?.area,
+//       },
+
+//       description: description || "",
+//       treatment: treatment || "",
+//     });
+
+//     // --------------------------------------------------------------------
+//     // 3️⃣ CREATE APPOINTMENT WITH NEW patientFormId
+//     // --------------------------------------------------------------------
+//     const newAppointment = await Appointment.create({
+//       doctorId,
+//       patientId: finalPatientId,
+//       patientFormId: newPatientForm._id,
+//       appointmentDate: new Date(appointmentDate),
+//       startTime,
+//       endTime,
+//       treatment,
+//       description,
+//       date: new Date(appointmentDate),
+//     });
+
+//     const populatedAppointment = await Appointment.findById(newAppointment._id)
+//       .populate("doctorId", "name email phone docSpeciality")
+//       .populate("patientId", "name email phone")
+//       .populate("patientFormId");
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Appointment booked successfully",
+//       data: populatedAppointment,
+//     });
+//   } catch (error) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
+
 exports.createAppointmentWithSlot = async (req, res) => {
   try {
     const {
@@ -2404,6 +2565,9 @@ exports.createAppointmentWithSlot = async (req, res) => {
       patientData,
     } = req.body;
 
+    /* --------------------------------
+       BASIC VALIDATION
+    --------------------------------- */
     if (!doctorId || !appointmentDate || !startTime || !endTime) {
       return res.status(400).json({
         success: false,
@@ -2411,7 +2575,23 @@ exports.createAppointmentWithSlot = async (req, res) => {
       });
     }
 
-    // Check slot availability
+    // Patient MUST exist or be creatable
+    if (!patientId && !patientData?.phone) {
+      return res.status(400).json({
+        success: false,
+        message: "PatientId or patient phone is required",
+      });
+    }
+
+    /* --------------------------------
+       NORMALIZER (prevents enum errors)
+    --------------------------------- */
+    const normalize = (v) =>
+      v === "" || v === undefined ? null : v;
+
+    /* --------------------------------
+       SLOT AVAILABILITY CHECK
+    --------------------------------- */
     const existingAppointment = await Appointment.findOne({
       doctorId,
       appointmentDate: {
@@ -2431,67 +2611,78 @@ exports.createAppointmentWithSlot = async (req, res) => {
       });
     }
 
+    /* --------------------------------
+       MODELS
+    --------------------------------- */
     const Patient = require("../models/patient");
     const PatientForm = require("../models/patientform");
     const Doctor = require("../models/doctor");
 
+    /* --------------------------------
+       PATIENT RESOLUTION (NO NULL)
+    --------------------------------- */
     let finalPatientId = patientId;
 
-    // --------------------------------------------------------------------
-    // 1️⃣ MATCH PATIENT BY PHONE → SAME LOGIC AS OLD PATIENT MODEL
-    // --------------------------------------------------------------------
-    if (patientData?.phone) {
-      let existingPatient = await Patient.findOne({ phone: patientData.phone });
+    if (!finalPatientId && patientData?.phone) {
+      let existingPatient = await Patient.findOne({
+        phone: patientData.phone,
+      });
 
       if (existingPatient) {
         finalPatientId = existingPatient._id;
       } else {
         const newPatient = await Patient.create({
-          name: patientData.name || "",
+          name: normalize(patientData.name),
           phone: patientData.phone,
-          email: patientData.email || "",
-          age: patientData.age || "",
-          gender: patientData.gender || "",
-          occupation: patientData.occupation || "",
-          address: patientData.address || "",
-          pincode: patientData.pincode || "",
-          city: patientData.city || "",
-          state: patientData.state || "",
-          area: patientData.area || "",
+          email: normalize(patientData.email),
+          age: normalize(patientData.age),
+          gender: normalize(patientData.gender), // enum-safe
+          occupation: normalize(patientData.occupation),
+          address: normalize(patientData.address),
+          pincode: normalize(patientData.pincode),
+          city: normalize(patientData.city),
+          state: normalize(patientData.state),
+          area: normalize(patientData.area),
         });
 
         finalPatientId = newPatient._id;
       }
     }
 
-    // --------------------------------------------------------------------
-    // 2️⃣ ALWAYS CREATE A NEW PATIENT FORM (NO MATCHING, NO REUSE)
-    // --------------------------------------------------------------------
+    if (!finalPatientId) {
+      throw new Error("Patient creation failed");
+    }
+
+    /* --------------------------------
+       PATIENT FORM (ALWAYS CREATED)
+    --------------------------------- */
     const doctorData = await Doctor.findById(doctorId);
 
     const newPatientForm = await PatientForm.create({
-      doctor: doctorData && { _id: doctorData._id, name: doctorData.name },
+      doctor: doctorData && {
+        _id: doctorData._id,
+        name: doctorData.name,
+      },
       patient: {
         _id: finalPatientId,
-        name: patientData?.name || "",
-        phone: patientData?.phone || "",
-        age: patientData?.age,
-        gender: patientData?.gender,
-        occupation: patientData?.occupation,
-        address: patientData?.address,
-        pincode: patientData?.pincode,
-        city: patientData?.city,
-        state: patientData?.state,
-        area: patientData?.area,
+        name: normalize(patientData?.name),
+        phone: normalize(patientData?.phone),
+        age: normalize(patientData?.age),
+        gender: normalize(patientData?.gender),
+        occupation: normalize(patientData?.occupation),
+        address: normalize(patientData?.address),
+        pincode: normalize(patientData?.pincode),
+        city: normalize(patientData?.city),
+        state: normalize(patientData?.state),
+        area: normalize(patientData?.area),
       },
-
-      description: description || "",
-      treatment: treatment || "",
+      description: normalize(description),
+      treatment: normalize(treatment),
     });
 
-    // --------------------------------------------------------------------
-    // 3️⃣ CREATE APPOINTMENT WITH NEW patientFormId
-    // --------------------------------------------------------------------
+    /* --------------------------------
+       APPOINTMENT CREATION
+    --------------------------------- */
     const newAppointment = await Appointment.create({
       doctorId,
       patientId: finalPatientId,
@@ -2499,14 +2690,16 @@ exports.createAppointmentWithSlot = async (req, res) => {
       appointmentDate: new Date(appointmentDate),
       startTime,
       endTime,
-      treatment,
-      description,
+      treatment: normalize(treatment),
+      description: normalize(description),
       date: new Date(appointmentDate),
     });
 
-    const populatedAppointment = await Appointment.findById(newAppointment._id)
+    const populatedAppointment = await Appointment.findById(
+      newAppointment._id
+    )
       .populate("doctorId", "name email phone docSpeciality")
-      .populate("patientId", "name email phone")
+      .populate("patientId", "name email phone gender")
       .populate("patientFormId");
 
     return res.status(201).json({

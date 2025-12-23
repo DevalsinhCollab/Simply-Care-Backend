@@ -6,11 +6,13 @@ const patientSchema = mongoose.Schema(
       type: String,
       trim: true,
       default: null,
+      required: true,
     },
     phone: {
       type: String,
       trim: true,
       default: null,
+      required: true,
     },
     email: {
       type: String,
@@ -20,7 +22,7 @@ const patientSchema = mongoose.Schema(
     gender: {
       type: String,
       trim: true,
-      enum: ["Male", "Female", "Other"],
+      enum: ["Male", "Female", "Other" , ""],
     },
     age: {
       type: String,
