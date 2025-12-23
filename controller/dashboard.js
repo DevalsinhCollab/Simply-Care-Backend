@@ -9,7 +9,7 @@ const moment = require('moment');
 
 exports.dashboardCount = async (req, res) => {
     try {
-        const patientCount = await PatientSchema.countDocuments();
+        const patientCount = await PatientSchema.countDocuments({isDeleted: false});
         const doctorCount = await DoctorSchema.countDocuments({ isDeleted: false });
         const patientFormCount = await Appointment.countDocuments({ isDeleted: false });
 
