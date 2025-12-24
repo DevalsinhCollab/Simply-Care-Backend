@@ -13,7 +13,6 @@ exports.dashboardCount = async (req, res) => {
         const doctorCount = await DoctorSchema.countDocuments({ isDeleted: false });
         const patientFormCount = await Appointment.countDocuments({ isDeleted: false });
 
-        console.log("patientCount", patientFormCount);
         // Calculate income (total payment from appointments)
         const incomeResult = await Appointment.aggregate([
             { $match: { isDeleted: false } },

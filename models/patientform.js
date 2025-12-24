@@ -227,6 +227,11 @@ const patientFormSchema = new mongoose.Schema(
             trim: true,
             default: null,
         },
+        paymentOption: {
+            type: String,
+            trim: true,
+            default: null,
+        },
         prescribeMedicine: {
             type: String,
             trim: true,

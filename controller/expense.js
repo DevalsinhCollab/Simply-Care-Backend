@@ -123,7 +123,6 @@ exports.updateExpense = async (req, res) => {
     const { description, amount, expenseDate, month, category, paymentMode } =
       req.body;
 
-      console.log(req.body);
 
     const expense = await Expense.findByIdAndUpdate(
       req.params.id,

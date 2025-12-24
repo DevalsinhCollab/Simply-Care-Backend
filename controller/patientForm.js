@@ -6,6 +6,7 @@ const path = require("path");
 const mongoose = require("mongoose");
 const { generateReceiptNumber } = require("../comman/comman");
 const PatientSchema = require("../models/patient");
+const Patient = require("../models/patient");
 
 // exports.addPatientForm = async (req, res) => {
 //     try {
@@ -68,7 +69,6 @@ exports.addPatientForm = async (req, res) => {
       }
     }
 
-    console.log("finalPatient---", finalPatient);
 
     // 🟢 Now prepare final payload
     const payload = {
@@ -264,41 +264,136 @@ exports.getPatientsForm = async (req, res) => {
 //   }
 // };
 
+// const PatientForm = require("../models/PatientForm");
+
+
 exports.updatePatientForm = async (req, res) => {
   try {
+
     const { id } = req.params;
-    const cleanObject = (obj) => {
-      Object.keys(obj).forEach((key) => {
-        if (obj[key] === null || obj[key] === undefined) {
-          delete obj[key];
-        }
+    const formData = req.body;
+
+    // 1️⃣ Validate patientFormId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient form ID",
       });
-      return obj;
+    }
+
+    // 2️⃣ Validate mobile number
+    if (!formData.phone || !/^\d{10}$/.test(formData.phone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid 10-digit mobile number is required",
+      });
+    }
+
+    // 3️⃣ Find Patient by mobile
+    const patient = await Patient.findOne({
+      phone: formData.phone,
+      isDeleted: false,
+    });
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: "Patient not found with this mobile number",
+      });
+    }
+
+    // 4️⃣ Update Patient (safe fields only)
+    const patientUpdateData = {
+      name: formData.name,
+      email: formData.email,
+      gender: formData.gender,
+      age: formData.age,
+      occupation: formData.occupation,
+      address: formData.address,
+      area: formData.area,
+      city: formData.city,
+      state: formData.state,
+      pincode: formData.pincode,
     };
 
-    const updateData = cleanObject({ ...req.body });
+    Object.keys(patientUpdateData).forEach(
+      (key) =>
+        patientUpdateData[key] === undefined &&
+        delete patientUpdateData[key]
+    );
 
-    const patientData = await PatientFormSchema.findByIdAndUpdate(
+    await Patient.findByIdAndUpdate(patient._id, {
+      $set: patientUpdateData,
+    });
+
+    // 5️⃣ Update PatientForm
+    const updatedForm = await PatientFormSchema.findByIdAndUpdate(
       id,
-      { $set: updateData }, // ✅ SAFE UPDATE
-      { new: true }
-    )
-      .populate("patient")
-      .populate("doctor")
-      .populate("referenceDoctor");
+      {
+        ...formData,
+        patientId: patient._id, // link for future
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedForm) {
+      return res.status(404).json({
+        success: false,
+        message: "Patient form not found",
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Updated Successfully",
-      data: patientData,
+      message: "Patient & PatientForm updated successfully",
+      data: updatedForm,
     });
   } catch (error) {
-    return res.status(400).json({
+    console.error("🔥 INTERNAL SERVER ERROR:", error);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || "Internal server error",
     });
   }
 };
+
+
+// exports.updatePatientForm = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const cleanObject = (obj) => {
+//       Object.keys(obj).forEach((key) => {
+//         if (obj[key] === null || obj[key] === undefined) {
+//           delete obj[key];
+//         }
+//       });
+//       return obj;
+//     };
+
+//     const updateData = cleanObject({ ...req.body });
+
+//     const patientData = await PatientFormSchema.findByIdAndUpdate(
+//       id,
+//       { $set: updateData }, // ✅ SAFE UPDATE
+//       { new: true }
+//     )
+//       .populate("patient")
+//       .populate("doctor")
+//       .populate("referenceDoctor");
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Updated Successfully",
+//       data: patientData,
+//     });
+//   } catch (error) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
 
 exports.deletePatientForm = async (req, res) => {
   try {
