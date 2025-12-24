@@ -26,24 +26,22 @@ exports.addPatientForm = async (req, res) => {
     const {
       patient,
       doctor,
-        phone,
-        name,
-        age,
-        gender,
-        occupation,
-        address,
-        pincode,
-        city,
-        state,
-        area,
+      phone,
+      name,
+      age,
+      gender,
+      occupation,
+      address,
+      pincode,
+      city,
+      state,
+      area,
 
       referenceDoctor,
       ...otherFields
     } = req.body;
 
     let finalPatient;
-
-
 
     // ✅ CASE 1 — User selected EXISTING patient
     if (patient && patient._id) {
@@ -56,18 +54,18 @@ exports.addPatientForm = async (req, res) => {
 
       if (!finalPatient) {
         finalPatient = await PatientSchema.create({
-          name:  name,
+          name: name,
           phone: phone,
-          age:  age,
-          gender:  gender,
-          occupation:  occupation,
-          address:  address,
-          pincode:  pincode,
-          city:  city,
-          state:  state,
-          area:  area,
+          age: age,
+          gender: gender,
+          occupation: occupation,
+          address: address,
+          pincode: pincode,
+          city: city,
+          state: state,
+          area: area,
         });
-        }
+      }
     }
 
     console.log("finalPatient---", finalPatient);
@@ -101,7 +99,6 @@ exports.addPatientForm = async (req, res) => {
       message: "Added Successfully",
       data: patientForm,
     });
-
   } catch (error) {
     console.log(error);
     return res.status(400).json({ success: false, message: error.message });
@@ -186,7 +183,7 @@ exports.getPatientsForm = async (req, res) => {
       endDate,
     } = req.query;
 
-    let findObject = {isDeleted: false};    
+    let findObject = { isDeleted: false };
 
     if (search && search !== "") {
       findObject = {
@@ -247,15 +244,48 @@ exports.getPatientsForm = async (req, res) => {
   }
 };
 
+// exports.updatePatientForm = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     const patientData = await PatientFormSchema.findByIdAndUpdate(
+//       id,
+//       req.body,
+//       { new: true }
+//     );
+
+//     return res.status(200).json({
+//       success: true,
+//       message: "Updated Successfully",
+//       data: patientData,
+//     });
+//   } catch (error) {
+//     return res.status(400).json({ message: error.message, success: false });
+//   }
+// };
+
 exports.updatePatientForm = async (req, res) => {
   try {
     const { id } = req.params;
+    const cleanObject = (obj) => {
+      Object.keys(obj).forEach((key) => {
+        if (obj[key] === null || obj[key] === undefined) {
+          delete obj[key];
+        }
+      });
+      return obj;
+    };
+
+    const updateData = cleanObject({ ...req.body });
 
     const patientData = await PatientFormSchema.findByIdAndUpdate(
       id,
-      req.body,
+      { $set: updateData }, // ✅ SAFE UPDATE
       { new: true }
-    );
+    )
+      .populate("patient")
+      .populate("doctor")
+      .populate("referenceDoctor");
 
     return res.status(200).json({
       success: true,
@@ -263,7 +293,10 @@ exports.updatePatientForm = async (req, res) => {
       data: patientData,
     });
   } catch (error) {
-    return res.status(400).json({ message: error.message, success: false });
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
@@ -273,7 +306,7 @@ exports.deletePatientForm = async (req, res) => {
 
     // Get the patientForm to find the associated patient
     const patientForm = await PatientFormSchema.findById(id);
-    
+
     if (!patientForm) {
       return res.status(404).json({
         success: false,
@@ -374,12 +407,10 @@ exports.generateReport = async (req, res) => {
       },
     ]);
     if (!data || data.length === 0) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "No data found for the given patient and date range.",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "No data found for the given patient and date range.",
+      });
     }
 
     const patientData = data[0];
@@ -838,12 +869,10 @@ exports.generateReceipt = async (req, res) => {
       },
     ]);
     if (!data || data.length === 0) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "No data found for the given patient and date range.",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "No data found for the given patient and date range.",
+      });
     }
 
     const patientData = data[0];
@@ -1220,12 +1249,10 @@ exports.generatePrescription = async (req, res) => {
       },
     ]);
     if (!data || data.length === 0) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "No data found for the given patient and date range.",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "No data found for the given patient and date range.",
+      });
     }
 
     const patientData = data[0];
@@ -1564,7 +1591,6 @@ exports.generateAssessment = async (req, res) => {
     const { id } = req.query;
 
     const patientFormData = await PatientFormSchema.findById(id);
-
 
     const docDefinition = {
       content: [
