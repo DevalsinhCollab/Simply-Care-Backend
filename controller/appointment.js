@@ -2196,7 +2196,7 @@ exports.getAvailableSlots = async (req, res) => {
         slots.push({
           startTime: slotStart,
           endTime: slotEnd,
-          isBooked: true,
+          isBooked: false,
           isHoliday: true,
           reason: unavailabilityReason,
         });
@@ -2690,9 +2690,9 @@ exports.createAppointmentWithSlot = async (req, res) => {
       appointmentDate: new Date(appointmentDate),
       startTime,
       endTime,
-      treatment: normalize(treatment),
-      description: normalize(description),
-      date: new Date(appointmentDate),
+      // treatment: normalize(treatment),
+      // description: normalize(description),
+      // date: new Date(appointmentDate),
     });
 
     const populatedAppointment = await Appointment.findById(
