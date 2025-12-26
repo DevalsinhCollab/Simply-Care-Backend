@@ -113,6 +113,16 @@ const patientFormSchema = new mongoose.Schema(
             trim: true,
             default: null,
         },
+        extension: {
+            type: String,
+            trim: true,
+            default: null,
+        },
+        rotation: {
+            type: String,
+            trim: true,
+            default: null,
+        },
         spasm: {
             type: String,
             trim: true,
@@ -236,6 +246,23 @@ const patientFormSchema = new mongoose.Schema(
             type: String,
             trim: true,
             default: null,
+        },
+        prescriptions: {
+            type: [
+                {
+                    medicine: {
+                        _id: { type: mongoose.Schema.Types.ObjectId },
+                        name: { type: String, trim: true, default: null },
+                    },
+                    medicineId: { type: mongoose.Schema.Types.ObjectId, default: null },
+                    name: { type: String, trim: true, default: null },
+                    dosage: { type: String, trim: true, default: null },
+                    frequency: { type: String, trim: true, default: null },
+                    instruction: { type: String, trim: true, default: null },
+                    order: { type: Number, default: 0 },
+                },
+            ],
+            default: [],
         },
         isDeleted: {
             type: Boolean,

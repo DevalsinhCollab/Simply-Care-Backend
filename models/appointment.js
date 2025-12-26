@@ -89,7 +89,30 @@ const sessionSchema = new mongoose.Schema(
       enum: ["cash", "bank", "upi"],
       default: "cash",
     },
-   
+    prescribeMedicine: {
+      type: String,
+      enum: ["yes", "no"],
+      default: "no",
+    },
+
+    prescriptions: [
+      {
+        medicine: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'medicine',
+        },
+        medicineId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'medicine',
+        },
+        name: { type: String, default: '' },
+        dosage: { type: String, default: '' },
+        frequency: { type: String, default: '' },
+        instruction: { type: String, default: '' },
+        order: { type: Number, default: 0 },
+      },
+    ],
+
     paymentLogs: [
       {
         paidAmount: Number,

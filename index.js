@@ -39,6 +39,7 @@ app.use("/api/appointment", require("./router/appointment"));
 app.use("/api/doctorSpeciality", require("./router/doctorSpeciality"));
 app.use("/api/unavailability", require("./router/doctorUnavailability"));
 app.use("/api/expense", require("./router/expense"));
+app.use("/api/medicine", require("./router/medicine"));
 
 const activeUsers = {};
 const userSocketMap = {};

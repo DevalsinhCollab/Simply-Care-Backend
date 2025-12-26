@@ -199,6 +199,7 @@ const mongoose = require("mongoose");
 const { generateReceiptNumber } = require("../comman/comman");
 const Doctor = require("../models/doctor");
 const Patientform = require("../models/patientform");
+const appointment = require("../models/appointment");
 
 // ===========================
 // CREATE APPOINTMENT
@@ -350,11 +351,9 @@ exports.createAppointment = async (req, res) => {
   }
 };
 
-// ===========================
-// GET ALL APPOINTMENTS
-// ===========================
-
-
+// ====================
+// get all appointment 
+// ======================
 // exports.getAllAppointments = async (req, res) => {
 //   try {
 //     const {
@@ -365,7 +364,6 @@ exports.createAppointment = async (req, res) => {
 //       startDate,
 //       endDate,
 //       search,
-//       uniquePatient,
 //     } = req.query;
 
 //     let filter = {
@@ -376,14 +374,16 @@ exports.createAppointment = async (req, res) => {
 //     const role = req.user.role;
 //     const loggedDoctor = req.user.doctorId;
 
-//     if (role == "D" && loggedDoctor) {
+//     // 👨‍⚕️ Doctor login restriction
+//     if (role === "D" && loggedDoctor) {
 //       filter.doctorId = new mongoose.Types.ObjectId(loggedDoctor);
 //     }
 
+//     // 🔎 Direct filters
 //     if (doctorId) filter.doctorId = doctorId;
 //     if (patientId) filter.patientId = patientId;
 
-//     // 🔍 Search doctors by name
+//     // 🔍 Search by doctor name
 //     if (search) {
 //       const matchedDoctors = await Doctor.find({
 //         name: { $regex: search, $options: "i" },
@@ -393,13 +393,10 @@ exports.createAppointment = async (req, res) => {
 //         return res.json({ success: true, data: [], total: 0 });
 //       }
 
-//       filter.doctorId = {
-//         ...(filter.doctorId && { $in: [filter.doctorId] }),
-//         $in: matchedDoctors.map((d) => d._id),
-//       };
+//       filter.doctorId = { $in: matchedDoctors.map((d) => d._id) };
 //     }
 
-//     // 📅 Date filter
+//     // 📅 Date range filter
 //     if (
 //       startDate &&
 //       endDate &&
@@ -412,42 +409,13 @@ exports.createAppointment = async (req, res) => {
 //       };
 //     }
 
-//     /* ⭐ UNIQUE PATIENT MODE -------------------------------- */
-//     if (uniquePatient === "true") {
-//       const records = await Appointment.aggregate([
-//         { $match: filter },
-//         { $sort: { date: -1 } }, // latest first
-//         {
-//           $group: {
-//             _id: "$patientId",
-//             doc: { $first: "$$ROOT" }, // pick latest appointment per patient
-//           },
-//         },
-//         { $replaceRoot: { newRoot: "$doc" } },
-//         { $skip: Number(page) * Number(pageSize) },
-//         { $limit: Number(pageSize) },
-//       ]);
-
-//       // populate doctor & patient
-//       await Appointment.populate(records, [
-//         { path: "doctorId" },
-//         { path: "patientId" },
-//         { path: "patientFormId" },
-//         // { path: "paymentLog.receiveBy" },
-//       ]);
-
-//       const total = await Appointment.distinct("patientId", filter);
-
-//       return res.json({ success: true, data: records, total: total.length });
-//     }
-//     /* ------------------------------------------------------ */
-
-//     // 🔄 DEFAULT MODE — Full appointment history
+//     // 📄 Fetch all appointments
 //     const data = await Appointment.find(filter)
-//       .populate("doctorId").populate("patientFormId")
+//       .populate("doctorId")
 //       .populate("patientId")
-//       // .populate("paymentLog.receiveBy") // ⭐ NEW population
-//       .sort({ date: -1 })
+//       .populate("patientFormId")
+//       // .populate("paymentLog.receiveBy")
+//       .sort({ createdAt: -1 })
 //       .skip(Number(page) * Number(pageSize))
 //       .limit(Number(pageSize));
 
@@ -455,7 +423,10 @@ exports.createAppointment = async (req, res) => {
 
 //     res.json({ success: true, data, total });
 //   } catch (e) {
-//     res.status(400).json({ success: false, message: e.message });
+//     res.status(400).json({
+//       success: false,
+//       message: e.message,
+//     });
 //   }
 // };
 
@@ -473,68 +444,62 @@ exports.getAllAppointments = async (req, res) => {
 
     let filter = {
       isDeleted: false,
-      docApproval: { $ne: "pending", $exists: true },
+      docApproval: { $ne: "pending" },
     };
 
     const role = req.user.role;
     const loggedDoctor = req.user.doctorId;
 
-    // 👨‍⚕️ Doctor login restriction
+    // 👨‍⚕️ Doctor restriction
     if (role === "D" && loggedDoctor) {
-      filter.doctorId = new mongoose.Types.ObjectId(loggedDoctor);
+      filter.doctorId = loggedDoctor;
     }
 
     // 🔎 Direct filters
     if (doctorId) filter.doctorId = doctorId;
     if (patientId) filter.patientId = patientId;
 
-    // 🔍 Search by doctor name
+    // 🔍 Doctor name search
     if (search) {
-      const matchedDoctors = await Doctor.find({
+      const doctors = await Doctor.find({
         name: { $regex: search, $options: "i" },
       }).select("_id");
 
-      if (matchedDoctors.length === 0) {
+      if (!doctors.length) {
         return res.json({ success: true, data: [], total: 0 });
       }
 
-      filter.doctorId = { $in: matchedDoctors.map((d) => d._id) };
+      filter.doctorId = { $in: doctors.map(d => d._id) };
     }
 
-    // 📅 Date range filter
-    if (
-      startDate &&
-      endDate &&
-      startDate !== "Invalid Date" &&
-      endDate !== "Invalid Date"
-    ) {
-      filter.date = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
-      };
+    // 📅 OPTIONAL Appointment Date filter (FIXED)
+    if (startDate || endDate) {
+      filter.appointmentDate = {};
+
+      if (startDate) {
+        filter.appointmentDate.$gte = new Date(startDate);
+      }
+
+      if (endDate) {
+        filter.appointmentDate.$lte = new Date(endDate);
+      }
     }
 
-    // 📄 Fetch all appointments
     const data = await Appointment.find(filter)
       .populate("doctorId")
       .populate("patientId")
       .populate("patientFormId")
-      // .populate("paymentLog.receiveBy")
-      .sort({ createdAt: -1 })
-      .skip(Number(page) * Number(pageSize))
-      .limit(Number(pageSize));
+      .sort({ appointmentDate: -1 })
+      .skip(page * pageSize)
+      .limit(pageSize);
 
     const total = await Appointment.countDocuments(filter);
 
     res.json({ success: true, data, total });
-  } catch (e) {
-    res.status(400).json({
-      success: false,
-      message: e.message,
-    });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 };
-
 
 // ===========================
 // GET APPOINTMENT BY ID
@@ -546,8 +511,8 @@ exports.getAppointmentById = async (req, res) => {
       isDeleted: false,
     })
       .populate("doctorId")
-      .populate("patientId")
-      // .populate("paymentLog.receiveBy"); // ⭐ NEW population;
+      .populate("patientId");
+    // .populate("paymentLog.receiveBy"); // ⭐ NEW population;
 
     if (!appointment) {
       return res.status(404).json({
@@ -686,7 +651,6 @@ exports.updateAppointment = async (req, res) => {
 //   }
 // };
 
-
 exports.deleteAppointment = async (req, res) => {
   try {
     const appt = await Appointment.findById(req.params.id);
@@ -716,7 +680,6 @@ exports.deleteAppointment = async (req, res) => {
       message: "Appointment & Patient Form deleted successfully",
       data: appt,
     });
-
   } catch (error) {
     return res.status(400).json({
       success: false,
@@ -725,46 +688,370 @@ exports.deleteAppointment = async (req, res) => {
   }
 };
 
-
 // ===========================
 // GENERATE REPORT
 // ===========================
+// exports.generateReport = async (req, res) => {
+//   try {
+//     const imagePath = path.resolve(__dirname, "../images/ErayaLogo.png");
+
+//     let imageDataUri = null;
+
+//     try {
+//       const imageBase64 = fs.readFileSync(imagePath).toString("base64");
+//       imageDataUri = `data:image/png;base64,${imageBase64}`;
+//     } catch (err) {
+//       console.error("Image load error:", err.message);
+//     }
+
+//     const { startDate, endDate, patient, doctor } = req.query;
+
+//     if (!patient  || !doctor) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Missing required fields." });
+//     }
+
+//     // Parse dates
+//     let parsedStart = moment(startDate, "DD/MM/YYYY").startOf("day").toDate();
+//     let parsedEnd = moment(endDate, "DD/MM/YYYY").endOf("day").toDate();
+
+//     // Aggregate appointment data
+//     const data = await Appointment.aggregate([
+//       {
+//         $match: {
+//           patientId: new mongoose.Types.ObjectId(patient),
+//           doctorId: new mongoose.Types.ObjectId(doctor),
+//           date: { $gte: parsedStart, $lte: parsedEnd },
+//           isDeleted: false,
+//           docApproval: "approved",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "patients",
+//           localField: "patientId",
+//           foreignField: "_id",
+//           as: "patientData",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "doctors",
+//           localField: "doctorId",
+//           foreignField: "_id",
+//           as: "doctorData",
+//         },
+//       },
+//       {
+//         $sort: {
+//           date: -1,
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           date: 1,
+//           treatment: 1,
+//           payment: { $toDouble: "$payment" },
+//           patientName: { $arrayElemAt: ["$patientData.name", 0] },
+//           doctorName: { $arrayElemAt: ["$doctorData.name", 0] },
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: "$patientName",
+//           doctorName: { $first: "$doctorName" },
+//           date: { $first: "$date" },
+//           records: {
+//             $push: {
+//               date: "$date",
+//               treatment: "$treatment",
+//               payment: "$payment",
+//             },
+//           },
+//           totalAmount: { $sum: "$payment" },
+//         },
+//       },
+//     ]);
+
+//     if (!data || data.length === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "No data found for the given patient and date range.",
+//       });
+//     }
+
+//     const patientData = data[0];
+//     const records = patientData.records.map((record, index) => {
+//       const isEven = index % 2 === 1;
+//       const rowStyle = {
+//         fillColor: isEven ? "#eaf4f3" : null,
+//         lineHeight: 1.5,
+//         margin: [0, 5, 0, 5],
+//       };
+//       return [
+//         { text: `${index + 1}.`, ...rowStyle, alignment: "center" },
+//         { text: record.treatment || "N/A", ...rowStyle, alignment: "center" },
+//         {
+//           text: moment(record.date).format("DD/MM/YYYY"),
+//           ...rowStyle,
+//           alignment: "center",
+//         },
+//         {
+//           text:
+//             record.payment != null ? `${Number(record.payment)}/-` : "0.00/-",
+//           alignment: "right",
+//           ...rowStyle,
+//           alignment: "center",
+//         },
+//       ];
+//     });
+
+//     const isEvenSubtotal = records.length % 2 === 1;
+
+//     records.push([
+//       {
+//         text: "Sub Total",
+//         bold: true,
+//         colSpan: 3,
+//         alignment: "right",
+//         fillColor: isEvenSubtotal ? "#eaf4f3" : null,
+//         lineHeight: 1.5,
+//         margin: [0, 5, 0, 5],
+//       },
+//       {},
+//       {},
+//       {
+//         text: `${patientData.totalAmount}/-`,
+//         bold: true,
+//         alignment: "right",
+//         fillColor: isEvenSubtotal ? "#eaf4f3" : null,
+//         lineHeight: 1.5,
+//         margin: [0, 5, 0, 5],
+//       },
+//     ]);
+
+//     const docDefinition = {
+//       content: [
+//         {
+//           columns: [
+//             {
+//               image: imageDataUri,
+//               width: 150,
+//             },
+//             {
+//               text: "Invoice",
+//               style: "invoiceTitle",
+//               alignment: "right",
+//               margin: [0, 20, 0, 0],
+//             },
+//           ],
+//           columnGap: 10,
+//           margin: [0, 0, 0, 20],
+//         },
+//         {
+//           canvas: [
+//             {
+//               type: "line",
+//               x1: 0,
+//               y1: 0,
+//               x2: 515,
+//               y2: 0,
+//               lineWidth: 1,
+//               color: "#13756f",
+//             },
+//           ],
+//           margin: [0, 0, 0, 10],
+//         },
+//         {
+//           columns: [
+//             {
+//               text: [
+//                 { text: "Patient Name:- ", bold: true },
+//                 `${patientData._id}`,
+//               ],
+//               style: "header",
+//             },
+//             {
+//               text: [
+//                 { text: "Date:- ", bold: true },
+//                 `${
+//                   patientData.date
+//                     ? moment(patientData.date).format("DD/MM/YYYY")
+//                     : "N/A"
+//                 }`,
+//               ],
+//               style: "header",
+//               margin: [110, 10, 0, 0],
+//             },
+//           ],
+//           columnGap: 10,
+//           margin: [0, 0, 0, 20],
+//         },
+//         {
+//           text: [
+//             { text: "Doctor Name:- ", bold: true },
+//             `${patientData.doctorName}`,
+//           ],
+//           style: "header2",
+//         },
+//         {
+//           table: {
+//             headerRows: 1,
+//             widths: [50, 300, "*", "auto"],
+//             body: [
+//               [
+//                 {
+//                   text: "Sr. No.",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   lineHeight: 1.5,
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: "Treatment",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   lineHeight: 1.5,
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: "Date",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   lineHeight: 1.5,
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: "Amount",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   alignment: "center",
+//                   lineHeight: 1.5,
+//                 },
+//               ],
+//               ...records,
+//             ],
+//           },
+//           layout: "noBorders",
+//           margin: [0, 30, 0, 0],
+//         },
+//       ],
+//       styles: {
+//         header: { fontSize: 14, margin: [0, 10, 0, 0] },
+//         header2: { fontSize: 14, margin: [0, 0, 0, 10] },
+//         subheader: { fontSize: 14, bold: true, alignment: "right" },
+//         invoiceTitle: { fontSize: 25, bold: true, color: "#13756f" },
+//       },
+//       // footer: function () {
+//       //   return {
+//       //     columns: [
+//       //       { text: "Eraya Health Care", alignment: "left", margin: [20, 0] },
+//       //       {
+//       //         text: `Page ${this.pageCount}`,
+//       //         alignment: "right",
+//       //         margin: [0, 0, 20, 0],
+//       //       },
+//       //     ],
+//       //     margin: [0, 10, 0, 0],
+//       //   };
+//       // },
+//       footer: function (currentPage, pageCount) {
+//         return {
+//           columns: [
+//             { text: "Eraya Health Care", alignment: "left", margin: [20, 0] },
+//             {
+//               text: `Page ${currentPage} of ${pageCount}`,
+//               alignment: "right",
+//               margin: [0, 0, 20, 0],
+//             },
+//           ],
+//           margin: [0, 10, 0, 0],
+//         };
+//       },
+//     };
+
+//     const fonts = {
+//       Roboto: {
+//         normal: path.join(__dirname, "../fonts/Roboto-Regular.ttf"),
+//         bold: path.join(__dirname, "../fonts/Roboto-Medium.ttf"),
+//         italics: path.join(__dirname, "../fonts/Roboto-Italic.ttf"),
+//         bolditalics: path.join(__dirname, "../fonts/Roboto-MediumItalic.ttf"),
+//       },
+//     };
+
+//     const printer = new PdfPrinter(fonts);
+//     const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+//     res.setHeader("Content-Type", "application/pdf");
+//     res.setHeader(
+//       "Content-Disposition",
+//       `inline; filename=${patientData._id}.pdf`
+//     );
+
+//     pdfDoc.pipe(res);
+//     pdfDoc.end();
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
 exports.generateReport = async (req, res) => {
   try {
-    const imagePath = path.resolve(__dirname, "../images/ErayaLogo.png");
-
+    /* ---------------- LOGO ---------------- */
     let imageDataUri = null;
-
     try {
+      const imagePath = path.resolve(__dirname, "../images/ErayaLogo.png");
       const imageBase64 = fs.readFileSync(imagePath).toString("base64");
       imageDataUri = `data:image/png;base64,${imageBase64}`;
-    } catch (err) {
-      console.error("Image load error:", err.message);
+    } catch (e) {}
+
+    const { patient, doctor, startDate, endDate } = req.query;
+
+    if (!patient || !doctor) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
     }
 
-    const { startDate, endDate, patient, doctor } = req.query;
-
-    if (!patient || !startDate || !endDate || !doctor) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing required fields." });
+    /* ---------------- DATE FILTER ---------------- */
+    let dateFilter = {};
+    if (startDate && endDate) {
+      dateFilter = {
+        appointmentDate: {
+          $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
+          $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
+        },
+      };
     }
 
-    // Parse dates
-    let parsedStart = moment(startDate, "DD/MM/YYYY").startOf("day").toDate();
-    let parsedEnd = moment(endDate, "DD/MM/YYYY").endOf("day").toDate();
-
-    // Aggregate appointment data
+    /* ---------------- DATA ---------------- */
     const data = await Appointment.aggregate([
       {
         $match: {
           patientId: new mongoose.Types.ObjectId(patient),
           doctorId: new mongoose.Types.ObjectId(doctor),
-          date: { $gte: parsedStart, $lte: parsedEnd },
           isDeleted: false,
           docApproval: "approved",
+          ...dateFilter,
         },
       },
+      {
+        $lookup: {
+          from: "patientforms",
+          localField: "patientFormId",
+          foreignField: "_id",
+          as: "patientForm",
+        },
+      },
+      { $unwind: "$patientForm" },
       {
         $lookup: {
           from: "patients",
@@ -782,244 +1069,269 @@ exports.generateReport = async (req, res) => {
         },
       },
       {
-        $sort: {
-          date: -1,
-        },
-      },
-      {
         $project: {
-          _id: 0,
-          date: 1,
-          treatment: 1,
-          payment: { $toDouble: "$payment" },
           patientName: { $arrayElemAt: ["$patientData.name", 0] },
           doctorName: { $arrayElemAt: ["$doctorData.name", 0] },
-        },
-      },
-      {
-        $group: {
-          _id: "$patientName",
-          doctorName: { $first: "$doctorName" },
-          date: { $first: "$date" },
-          records: {
-            $push: {
-              date: "$date",
-              treatment: "$treatment",
-              payment: "$payment",
-            },
+          treatment: "$patientForm.treatment",
+          description: "$patientForm.description",
+          assessmentFee: {
+            $cond: [
+              { $eq: ["$patientForm.payment", "FOC"] },
+              0,
+              { $toDouble: "$patientForm.payment" },
+            ],
           },
-          totalAmount: { $sum: "$payment" },
+          treatmentDate: "$patientForm.date",
+          sessions: 1,
         },
       },
     ]);
 
-    if (!data || data.length === 0) {
+    if (!data.length) {
       return res.status(404).json({
         success: false,
-        message: "No data found for the given patient and date range.",
+        message: "No data found",
       });
     }
 
-    const patientData = data[0];
-    const records = patientData.records.map((record, index) => {
-      const isEven = index % 2 === 1;
-      const rowStyle = {
-        fillColor: isEven ? "#eaf4f3" : null,
-        lineHeight: 1.5,
-        margin: [0, 5, 0, 5],
-      };
-      return [
-        { text: `${index + 1}.`, ...rowStyle, alignment: "center" },
-        { text: record.treatment || "N/A", ...rowStyle, alignment: "center" },
+    const report = data[0];
+
+    /* ---------------- TABLE DATA ---------------- */
+    const records = [];
+    let sessionTotal = 0;
+    let paidTotal = 0;
+    let remainingTotal = 0;
+
+    report.sessions.forEach((s, index) => {
+      const payment = Number(s.payment || 0);
+      const paid = Number(s.paidAmount || 0);
+      const remaining = payment - paid;
+
+      sessionTotal += payment;
+      paidTotal += paid;
+      remainingTotal += remaining;
+
+      records.push([
         {
-          text: moment(record.date).format("DD/MM/YYYY"),
-          ...rowStyle,
+          text: index + 1,
           alignment: "center",
+          fillColor: index % 2 ? "#eef6f5" : null,
+        },
+        // { text: index === 0 ? report.treatment : "", alignment: "left", fillColor: index % 2 ? "#eef6f5" : null },
+        {
+          text:  report.description || "" ,
+          alignment: "left",
+          fillColor: index % 2 ? "#eef6f5" : null,
+        },
+
+        {
+          text: s.sessionDate
+            ? moment(s.sessionDate).format("DD/MM/YYYY")
+            : "N/A",
+          alignment: "center",
+          fillColor: index % 2 ? "#eef6f5" : null,
         },
         {
-          text:
-            record.payment != null ? `${Number(record.payment)}/-` : "0.00/-",
-          alignment: "right",
-          ...rowStyle,
+          text: `${payment}/-`,
           alignment: "center",
+          fillColor: index % 2 ? "#eef6f5" : null,
         },
-      ];
+        {
+          text: `${paid}/-`,
+          alignment: "center",
+          fillColor: index % 2 ? "#eef6f5" : null,
+        },
+        {
+          text: `${remaining}/-`,
+          alignment: "center",
+          fillColor: index % 2 ? "#eef6f5" : null,
+        },
+      ]);
     });
 
-    const isEvenSubtotal = records.length % 2 === 1;
-
+    /* ---------------- SUB TOTAL ---------------- */
     records.push([
-      {
-        text: "Sub Total",
-        bold: true,
-        colSpan: 3,
-        alignment: "right",
-        fillColor: isEvenSubtotal ? "#eaf4f3" : null,
-        lineHeight: 1.5,
-        margin: [0, 5, 0, 5],
-      },
+      { text: "Session Sub Total", colSpan: 3, alignment: "right", bold: true },
       {},
       {},
-      {
-        text: `${patientData.totalAmount}/-`,
-        bold: true,
-        alignment: "right",
-        fillColor: isEvenSubtotal ? "#eaf4f3" : null,
-        lineHeight: 1.5,
-        margin: [0, 5, 0, 5],
-      },
+      { text: `${sessionTotal}/-`, bold: true, alignment: "center" },
+      { text: `${paidTotal}/-`, bold: true, alignment: "center" },
+      { text: `${remainingTotal}/-`, bold: true, alignment: "center" },
     ]);
 
+    /* ---------------- FINAL TOTAL ---------------- */
+    records.push([
+      {
+        text: "Final Total (Assessment + Sessions)",
+        colSpan: 3,
+        alignment: "right",
+        bold: true,
+        margin: [0, 10, 10, 0], // 👈 TOP GAP FOR DESIGN
+      },
+      {},
+      {},
+      {
+        text: `${report.assessmentFee + sessionTotal}/-`,
+        bold: true,
+        alignment: "center",
+        colSpan: 3,
+        margin: [0, 10, 0, 0], // 👈 SAME TOP GAP
+        fontSize: 11, // 👈 Slight emphasis
+      },
+      {},
+      {},
+    ]);
+
+    /* ---------------- PDF ---------------- */
     const docDefinition = {
+      pageMargins: [40, 85, 40, 110],
+
+      footer: () => ({
+        margin: [40, 15, 40, 20],
+        stack: [
+          {
+            canvas: [
+              {
+                type: "line",
+                x1: 0,
+                y1: 0,
+                x2: 515,
+                y2: 0,
+                lineWidth: 1,
+                color: "#13756f",
+              },
+            ],
+            margin: [0, 0, 0, 8],
+          },
+          {
+            columns: [
+              { text: "+91 84870 77767", fontSize: 9 },
+              {
+                text: "erayahealthcare@gmail.com",
+                fontSize: 9,
+                alignment: "center",
+              },
+              {
+                text: "B/513, AWS-3, Manav Mandir Road\nMemnagar, Ahmedabad 380052",
+                fontSize: 9,
+                alignment: "right",
+              },
+            ],
+          },
+        ],
+      }),
+
       content: [
+        /* ===== HEADER ===== */
         {
-          columns: [
+          stack: [
             {
-              image: imageDataUri,
-              width: 150,
+              canvas: [
+                {
+                  type: "rect",
+                  x: -40,
+                  y: -30,
+                  w: 600,
+                  h: 55,
+                  color: "#1c9b92",
+                },
+                {
+                  type: "ellipse",
+                  x: 90,
+                  y: 45,
+                  r1: 140,
+                  r2: 45,
+                  color: "#ffffff",
+                },
+              ],
             },
             {
-              text: "Invoice",
-              style: "invoiceTitle",
-              alignment: "right",
-              margin: [0, 20, 0, 0],
+              columns: [
+                { image: imageDataUri, width: 130, margin: [10, -42, 0, 0] },
+                {
+                  text: "INVOICE",
+                  fontSize: 18,
+                  bold: true,
+                  color: "#1c9b92",
+                  alignment: "right",
+                  margin: [0, -30, 10, 0],
+                },
+              ],
             },
           ],
-          columnGap: 10,
-          margin: [0, 0, 0, 20],
+          margin: [0, 0, 0, 25],
         },
-        {
-          canvas: [
-            {
-              type: "line",
-              x1: 0,
-              y1: 0,
-              x2: 515,
-              y2: 0,
-              lineWidth: 1,
-              color: "#13756f",
-            },
-          ],
-          margin: [0, 0, 0, 10],
-        },
+
         {
           columns: [
             {
               text: [
                 { text: "Patient Name:- ", bold: true },
-                `${patientData._id}`,
+                report.patientName,
               ],
-              style: "header",
             },
             {
               text: [
                 { text: "Date:- ", bold: true },
-                `${
-                  patientData.date
-                    ? moment(patientData.date).format("DD/MM/YYYY")
-                    : "N/A"
-                }`,
+                moment(report.treatmentDate).format("DD/MM/YYYY"),
               ],
-              style: "header",
-              margin: [110, 10, 0, 0],
+              alignment: "right",
             },
           ],
-          columnGap: 10,
-          margin: [0, 0, 0, 20],
         },
+
+        {
+          text: [{ text: "Doctor Name:- ", bold: true }, report.doctorName],
+          margin: [0, 5, 0, 5],
+        },
+
         {
           text: [
-            { text: "Doctor Name:- ", bold: true },
-            `${patientData.doctorName}`,
+            { text: "Assessment Fee:- ", bold: true },
+            `${report.assessmentFee}/-`,
           ],
-          style: "header2",
+          margin: [0, 0, 0, 15],
         },
+
         {
           table: {
             headerRows: 1,
-            widths: [50, 300, "*", "auto"],
+            widths: [40, "*", 80, 70, 70, 80],
             body: [
               [
-                {
-                  text: "Sr. No.",
-                  bold: true,
-                  fillColor: "#166964",
-                  color: "#fff",
-                  lineHeight: 1.5,
-                  alignment: "center",
-                },
-                {
-                  text: "Treatment",
-                  bold: true,
-                  fillColor: "#166964",
-                  color: "#fff",
-                  lineHeight: 1.5,
-                  alignment: "center",
-                },
-                {
-                  text: "Date",
-                  bold: true,
-                  fillColor: "#166964",
-                  color: "#fff",
-                  lineHeight: 1.5,
-                  alignment: "center",
-                },
-                {
-                  text: "Amount",
-                  bold: true,
-                  fillColor: "#166964",
-                  color: "#fff",
-                  alignment: "center",
-                  lineHeight: 1.5,
-                },
+                { text: "Sr. No.", bold: true },
+                { text: "Descriptions", bold: true },
+                { text: "Date", bold: true },
+                { text: "Amount", bold: true },
+                { text: "Paid", bold: true },
+                { text: "Remaining", bold: true },
               ],
               ...records,
             ],
           },
-          layout: "noBorders",
-          margin: [0, 30, 0, 0],
+
+          layout: {
+            paddingTop: () => 8,
+            paddingBottom: () => 8,
+            paddingLeft: () => 6,
+            paddingRight: () => 6,
+
+            // subtle horizontal separators
+            hLineWidth: (i) => (i === 0 ? 1 : 0.6),
+            vLineWidth: () => 0,
+
+            hLineColor: () => "#dfeeee",
+          },
+
+          margin: [0, 10, 0, 0], // space before table
         },
       ],
-      styles: {
-        header: { fontSize: 14, margin: [0, 10, 0, 0] },
-        header2: { fontSize: 14, margin: [0, 0, 0, 10] },
-        subheader: { fontSize: 14, bold: true, alignment: "right" },
-        invoiceTitle: { fontSize: 25, bold: true, color: "#13756f" },
-      },
-      // footer: function () {
-      //   return {
-      //     columns: [
-      //       { text: "Eraya Health Care", alignment: "left", margin: [20, 0] },
-      //       {
-      //         text: `Page ${this.pageCount}`,
-      //         alignment: "right",
-      //         margin: [0, 0, 20, 0],
-      //       },
-      //     ],
-      //     margin: [0, 10, 0, 0],
-      //   };
-      // },
-      footer: function (currentPage, pageCount) {
-        return {
-          columns: [
-            { text: "Eraya Health Care", alignment: "left", margin: [20, 0] },
-            {
-              text: `Page ${currentPage} of ${pageCount}`,
-              alignment: "right",
-              margin: [0, 0, 20, 0],
-            },
-          ],
-          margin: [0, 10, 0, 0],
-        };
-      },
     };
 
     const fonts = {
       Roboto: {
         normal: path.join(__dirname, "../fonts/Roboto-Regular.ttf"),
         bold: path.join(__dirname, "../fonts/Roboto-Medium.ttf"),
-        italics: path.join(__dirname, "../fonts/Roboto-Italic.ttf"),
-        bolditalics: path.join(__dirname, "../fonts/Roboto-MediumItalic.ttf"),
       },
     };
 
@@ -1027,16 +1339,13 @@ exports.generateReport = async (req, res) => {
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename=${patientData._id}.pdf`
-    );
+    res.setHeader("Content-Disposition", "inline; filename=invoice.pdf");
 
     pdfDoc.pipe(res);
     pdfDoc.end();
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -1200,6 +1509,397 @@ exports.generateCertificate = async (req, res) => {
 // ===========================
 // GENERATE RECEIPT
 // ===========================
+// exports.generateReceipt = async (req, res) => {
+//   try {
+//     const imagePath = path.resolve(__dirname, "../images/ErayaLogo.png");
+//     const signPath = path.resolve(__dirname, "../images/Disha Sign.png");
+//     const stampPath = path.resolve(__dirname, "../images/stamp.png");
+
+//     let imageDataUri = null;
+//     let signDataUri = null;
+//     let stampDataUri = null;
+
+//     try {
+//       const imageBase64 = fs.readFileSync(imagePath).toString("base64");
+//       const signBase64 = fs.readFileSync(signPath).toString("base64");
+//       const stampBase64 = fs.readFileSync(stampPath).toString("base64");
+
+//       imageDataUri = `data:image/png;base64,${imageBase64}`;
+//       signDataUri = `data:image/png;base64,${signBase64}`;
+//       stampDataUri = `data:image/png;base64,${stampBase64}`;
+//     } catch (err) {
+//       console.error("Image load error:", err.message);
+//     }
+
+//     const { startDate, endDate, patient, doctor } = req.query;
+
+//     if (!patient  || !doctor) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Missing required fields." });
+//     }
+
+//     // Parse dates
+//     let parsedStart = moment(startDate, "DD/MM/YYYY").startOf("day").toDate();
+//     let parsedEnd = moment(endDate, "DD/MM/YYYY").endOf("day").toDate();
+
+//     // Aggregate appointment data
+//     const data = await Appointment.aggregate([
+//       {
+//         $match: {
+//           patientId: new mongoose.Types.ObjectId(patient),
+//           doctorId: new mongoose.Types.ObjectId(doctor),
+//           date: { $gte: parsedStart, $lte: parsedEnd },
+//           isDeleted: false,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "patients",
+//           localField: "patientId",
+//           foreignField: "_id",
+//           as: "patientData",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "doctors",
+//           localField: "doctorId",
+//           foreignField: "_id",
+//           as: "doctorData",
+//         },
+//       },
+//       {
+//         $sort: {
+//           date: -1,
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           date: 1,
+//           treatment: 1,
+//           description: 1,
+//           payment: { $toDouble: "$payment" },
+//           patientName: { $arrayElemAt: ["$patientData.name", 0] },
+//           doctorName: { $arrayElemAt: ["$doctorData.name", 0] },
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: "$patientName",
+//           doctorName: { $first: "$doctorName" },
+//           date: { $first: "$date" },
+//           records: {
+//             $push: {
+//               date: "$date",
+//               treatment: "$treatment",
+//               description: "$description",
+//               payment: "$payment",
+//             },
+//           },
+//           totalAmount: { $sum: "$payment" },
+//         },
+//       },
+//     ]);
+
+//     if (!data || data.length === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "No data found for the given patient and date range.",
+//       });
+//     }
+
+//     const patientData = data[0];
+//     let recordData =
+//       patientData && patientData.records && patientData.records[0];
+//     let lastDataArray = patientData?.records?.[patientData.records.length - 1];
+
+//     const receiptNumber = await generateReceiptNumber();
+
+//     const docDefinition = {
+//       content: [
+//         {
+//           columns: [
+//             {
+//               image: imageDataUri,
+//               width: 150,
+//             },
+//             {
+//               text: "Receipt",
+//               style: "invoiceTitle",
+//               alignment: "right",
+//               margin: [0, 20, 0, 0],
+//             },
+//           ],
+//           columnGap: 10,
+//           margin: [0, 0, 0, 20],
+//         },
+//         {
+//           canvas: [
+//             {
+//               type: "line",
+//               x1: 0,
+//               y1: 0,
+//               x2: 515,
+//               y2: 0,
+//               lineWidth: 1,
+//               color: "#13756f",
+//             },
+//           ],
+//           margin: [0, 0, 0, 10],
+//         },
+//         {
+//           columns: [
+//             {
+//               text: [
+//                 { text: "Receipt No.:- ", bold: true },
+//                 `${receiptNumber}`,
+//               ],
+//               style: "header",
+//             },
+//             {
+//               text: [
+//                 { text: "Date:- ", bold: true },
+//                 `${moment().format("DD/MM/YYYY")}`,
+//               ],
+//               style: "header",
+//               margin: [110, 10, 0, 0],
+//             },
+//           ],
+//           columnGap: 10,
+//           margin: [0, 0, 0, 20],
+//         },
+//         {
+//           columns: [
+//             {
+//               text: [
+//                 { text: "Patient Name:- ", bold: true },
+//                 `${patientData._id}`,
+//               ],
+//               style: "header",
+//             },
+//             {
+//               text: [
+//                 { text: "Doctor Name:- ", bold: true },
+//                 `${patientData.doctorName}`,
+//               ],
+//               style: "header",
+//               margin: [50, 10, 0, 0],
+//             },
+//           ],
+//           columnGap: 10,
+//           margin: [0, 0, 0, 20],
+//         },
+//         {
+//           table: {
+//             headerRows: 1,
+//             widths: [50, 80, 150, 50, "*", "*"],
+//             body: [
+//               [
+//                 {
+//                   text: "Sr. No.",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   lineHeight: 1.5,
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: "Start Date",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   lineHeight: 1.5,
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: "Treatment",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   lineHeight: 1.5,
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: "No. Rx",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   lineHeight: 1.5,
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: "Per Day",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   alignment: "center",
+//                   lineHeight: 1.5,
+//                 },
+//                 {
+//                   text: "Total Rs.",
+//                   bold: true,
+//                   fillColor: "#166964",
+//                   color: "#fff",
+//                   alignment: "center",
+//                   lineHeight: 1.5,
+//                 },
+//               ],
+//               [
+//                 { text: 1, alignment: "center" },
+//                 {
+//                   text:
+//                     lastDataArray && lastDataArray.date
+//                       ? moment(lastDataArray.date).format("DD/MM/YYYY")
+//                       : "-" || "N/A",
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: recordData ? recordData.treatment : "-" || "N/A",
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text: patientData.records.length || "N/A",
+//                   alignment: "center",
+//                 },
+//                 {
+//                   text:
+//                     recordData.payment != null
+//                       ? `${Number(recordData.payment)}/-`
+//                       : "0.00/-",
+//                   alignment: "right",
+//                 },
+//                 {
+//                   text:
+//                     recordData.payment != null
+//                       ? `${
+//                           Number(recordData.payment) *
+//                           patientData.records.length
+//                         }/-`
+//                       : "0.00/-",
+//                   alignment: "right",
+//                 },
+//               ],
+//             ],
+//           },
+//           layout: "noBorders",
+//           margin: [0, 30, 0, 0],
+//         },
+//         {
+//           text: [
+//             {
+//               text: "Payment received at Eraya Health Care for the given treatment. If you have any questions concerning this invoice contact Eraya Health Care",
+//             },
+//           ],
+//           margin: [0, 50, 0, 0],
+//         },
+//         {
+//           text: [{ text: "Thank you Eraya Health Care" }],
+//           margin: [0, 20, 0, 0],
+//         },
+//         {
+//           columns: [
+//             {},
+//             {
+//               image: signDataUri,
+//               width: 120,
+//               margin: [20, 70, 0, 0],
+//             },
+//           ],
+//         },
+//         {
+//           text: [{ text: "Dr. Disha Shah" }],
+//           fontSize: 14,
+//           alignment: "right",
+//           margin: [0, 20, 0, 0],
+//         },
+//         {
+//           columns: [
+//             {},
+//             {
+//               image: stampDataUri,
+//               width: 120,
+//               margin: [20, 20, 0, 0],
+//             },
+//           ],
+//         },
+//       ],
+//       styles: {
+//         header: { fontSize: 14, margin: [0, 10, 0, 0] },
+//         header2: { fontSize: 14, margin: [0, 0, 0, 10] },
+//         subheader: { fontSize: 14, bold: true, alignment: "right" },
+//         invoiceTitle: { fontSize: 25, bold: true, color: "#13756f" },
+//       },
+//       footer: function () {
+//         return {
+//           margin: [0, 0, 0, 0],
+//           table: {
+//             widths: ["*", "*", "*"],
+//             body: [
+//               [
+//                 {
+//                   text: "+91 84870 77767",
+//                   fontSize: 10,
+//                   margin: [10, 9],
+//                   color: "#ffffff",
+//                 },
+//                 {
+//                   text: "B/513, AWS-3, Manav Mandir Road Memnagar, Ahmedabad (Gujarat), 380052",
+//                   fontSize: 10,
+//                   margin: [10, 5],
+//                   color: "#ffffff",
+//                 },
+//                 {
+//                   text: "erayahealthcare@gmail.com",
+//                   fontSize: 10,
+//                   margin: [30, 9],
+//                   color: "#ffffff",
+//                 },
+//               ],
+//             ],
+//           },
+//           layout: {
+//             fillColor: function () {
+//               return "#166964";
+//             },
+//             hLineWidth: function () {
+//               return 0;
+//             },
+//             vLineWidth: function () {
+//               return 0;
+//             },
+//           },
+//           margin: [0, 0, 0, 0],
+//         };
+//       },
+//     };
+
+//     const fonts = {
+//       Roboto: {
+//         normal: path.join(__dirname, "../fonts/Roboto-Regular.ttf"),
+//         bold: path.join(__dirname, "../fonts/Roboto-Medium.ttf"),
+//         italics: path.join(__dirname, "../fonts/Roboto-Italic.ttf"),
+//         bolditalics: path.join(__dirname, "../fonts/Roboto-MediumItalic.ttf"),
+//       },
+//     };
+
+//     const printer = new PdfPrinter(fonts);
+//     const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+//     res.setHeader("Content-Type", "application/pdf");
+//     res.setHeader(
+//       "Content-Disposition",
+//       `inline; filename=${patientData._id}.pdf`
+//     );
+
+//     pdfDoc.pipe(res);
+//     pdfDoc.end();
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// };
 exports.generateReceipt = async (req, res) => {
   try {
     const imagePath = path.resolve(__dirname, "../images/ErayaLogo.png");
@@ -1211,37 +1911,45 @@ exports.generateReceipt = async (req, res) => {
     let stampDataUri = null;
 
     try {
-      const imageBase64 = fs.readFileSync(imagePath).toString("base64");
-      const signBase64 = fs.readFileSync(signPath).toString("base64");
-      const stampBase64 = fs.readFileSync(stampPath).toString("base64");
-
-      imageDataUri = `data:image/png;base64,${imageBase64}`;
-      signDataUri = `data:image/png;base64,${signBase64}`;
-      stampDataUri = `data:image/png;base64,${stampBase64}`;
+      imageDataUri = `data:image/png;base64,${fs
+        .readFileSync(imagePath)
+        .toString("base64")}`;
+      signDataUri = `data:image/png;base64,${fs
+        .readFileSync(signPath)
+        .toString("base64")}`;
+      stampDataUri = `data:image/png;base64,${fs
+        .readFileSync(stampPath)
+        .toString("base64")}`;
     } catch (err) {
       console.error("Image load error:", err.message);
     }
 
     const { startDate, endDate, patient, doctor } = req.query;
 
-    if (!patient || !startDate || !endDate || !doctor) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing required fields." });
+    if (!patient || !doctor) {
+      return res.status(400).json({
+        success: false,
+        message: "Patient and Doctor are required",
+      });
     }
 
-    // Parse dates
-    let parsedStart = moment(startDate, "DD/MM/YYYY").startOf("day").toDate();
-    let parsedEnd = moment(endDate, "DD/MM/YYYY").endOf("day").toDate();
+    // Date filter
+    let dateFilter = {};
+    if (startDate && endDate) {
+      dateFilter.date = {
+        $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
+        $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
+      };
+    }
 
-    // Aggregate appointment data
+    // Aggregation with patientFormId lookup
     const data = await Appointment.aggregate([
       {
         $match: {
           patientId: new mongoose.Types.ObjectId(patient),
           doctorId: new mongoose.Types.ObjectId(doctor),
-          date: { $gte: parsedStart, $lte: parsedEnd },
           isDeleted: false,
+          ...dateFilter,
         },
       },
       {
@@ -1261,50 +1969,50 @@ exports.generateReceipt = async (req, res) => {
         },
       },
       {
-        $sort: {
-          date: -1,
+        $lookup: {
+          from: "patientforms",
+          localField: "patientFormId",
+          foreignField: "_id",
+          as: "patientFormData",
         },
       },
+      { $sort: { date: -1 } },
       {
         $project: {
-          _id: 0,
           date: 1,
-          treatment: 1,
           description: 1,
-          payment: { $toDouble: "$payment" },
+          sessions: 1,
           patientName: { $arrayElemAt: ["$patientData.name", 0] },
           doctorName: { $arrayElemAt: ["$doctorData.name", 0] },
+          patientForm: { $arrayElemAt: ["$patientFormData", 0] },
+          
         },
       },
       {
         $group: {
           _id: "$patientName",
           doctorName: { $first: "$doctorName" },
-          date: { $first: "$date" },
-          records: {
-            $push: {
-              date: "$date",
-              treatment: "$treatment",
-              description: "$description",
-              payment: "$payment",
-            },
-          },
-          totalAmount: { $sum: "$payment" },
+          records: { $push: "$$ROOT" },
         },
       },
     ]);
 
-    if (!data || data.length === 0) {
+    if (!data.length) {
       return res.status(404).json({
         success: false,
-        message: "No data found for the given patient and date range.",
+        message: "No records found",
       });
     }
 
+    const parsePayment = (value) => {
+      if (!value) return 0;
+      if (typeof value === "string" && value.toUpperCase() === "FOC") return 0;
+      return Number(value) || 0;
+    };
+
     const patientData = data[0];
-    let recordData =
-      patientData && patientData.records && patientData.records[0];
-    let lastDataArray = patientData?.records?.[patientData.records.length - 1];
+    const records = patientData.records;
+    const lastRecord = records[records.length - 1];
 
     const receiptNumber = await generateReceiptNumber();
 
@@ -1312,10 +2020,7 @@ exports.generateReceipt = async (req, res) => {
       content: [
         {
           columns: [
-            {
-              image: imageDataUri,
-              width: 150,
-            },
+            { image: imageDataUri, width: 150 },
             {
               text: "Receipt",
               style: "invoiceTitle",
@@ -1323,8 +2028,6 @@ exports.generateReceipt = async (req, res) => {
               margin: [0, 20, 0, 0],
             },
           ],
-          columnGap: 10,
-          margin: [0, 0, 0, 20],
         },
         {
           canvas: [
@@ -1338,54 +2041,46 @@ exports.generateReceipt = async (req, res) => {
               color: "#13756f",
             },
           ],
-          margin: [0, 0, 0, 10],
+          margin: [0, 10, 0, 20],
         },
         {
           columns: [
             {
-              text: [
-                { text: "Receipt No.:- ", bold: true },
-                `${receiptNumber}`,
-              ],
+              text: [{ text: "Receipt No.:- ", bold: true }, receiptNumber],
               style: "header",
             },
             {
               text: [
                 { text: "Date:- ", bold: true },
-                `${moment().format("DD/MM/YYYY")}`,
+                moment().format("DD/MM/YYYY"),
               ],
               style: "header",
-              margin: [110, 10, 0, 0],
+              alignment: "right",
             },
           ],
-          columnGap: 10,
-          margin: [0, 0, 0, 20],
         },
         {
           columns: [
             {
-              text: [
-                { text: "Patient Name:- ", bold: true },
-                `${patientData._id}`,
-              ],
+              text: [{ text: "Patient Name:- ", bold: true }, patientData._id],
               style: "header",
             },
             {
               text: [
                 { text: "Doctor Name:- ", bold: true },
-                `${patientData.doctorName}`,
+                patientData.doctorName,
               ],
               style: "header",
-              margin: [50, 10, 0, 0],
+              alignment: "right",
             },
           ],
-          columnGap: 10,
-          margin: [0, 0, 0, 20],
+          margin: [0, 10, 0, 20],
         },
+        // =================== UPDATED TABLE ===================
         {
           table: {
             headerRows: 1,
-            widths: [50, 80, 150, 50, "*", "*"],
+            widths: ["auto", "*", "*", "*", "*"], // automatically adjusts to page width
             body: [
               [
                 {
@@ -1393,7 +2088,6 @@ exports.generateReceipt = async (req, res) => {
                   bold: true,
                   fillColor: "#166964",
                   color: "#fff",
-                  lineHeight: 1.5,
                   alignment: "center",
                 },
                 {
@@ -1401,7 +2095,6 @@ exports.generateReceipt = async (req, res) => {
                   bold: true,
                   fillColor: "#166964",
                   color: "#fff",
-                  lineHeight: 1.5,
                   alignment: "center",
                 },
                 {
@@ -1409,24 +2102,14 @@ exports.generateReceipt = async (req, res) => {
                   bold: true,
                   fillColor: "#166964",
                   color: "#fff",
-                  lineHeight: 1.5,
                   alignment: "center",
                 },
                 {
-                  text: "No. Rx",
-                  bold: true,
-                  fillColor: "#166964",
-                  color: "#fff",
-                  lineHeight: 1.5,
-                  alignment: "center",
-                },
-                {
-                  text: "Per Day",
+                  text: "No. Sessions",
                   bold: true,
                   fillColor: "#166964",
                   color: "#fff",
                   alignment: "center",
-                  lineHeight: 1.5,
                 },
                 {
                   text: "Total Rs.",
@@ -1434,169 +2117,529 @@ exports.generateReceipt = async (req, res) => {
                   fillColor: "#166964",
                   color: "#fff",
                   alignment: "center",
-                  lineHeight: 1.5,
                 },
               ],
+              // Main row
               [
                 { text: 1, alignment: "center" },
                 {
-                  text:
-                    lastDataArray && lastDataArray.date
-                      ? moment(lastDataArray.date).format("DD/MM/YYYY")
-                      : "-" || "N/A",
+                  text: lastRecord?.patientForm?.date
+                    ? moment(lastRecord.date).format("DD/MM/YYYY")
+                    : "-",
                   alignment: "center",
                 },
                 {
-                  text: recordData ? recordData.treatment : "-" || "N/A",
+                  text: lastRecord?.patientForm?.treatment || "-",
                   alignment: "center",
                 },
                 {
-                  text: patientData.records.length || "N/A",
+                  text: lastRecord?.sessions?.length || 0,
                   alignment: "center",
                 },
                 {
-                  text:
-                    recordData.payment != null
-                      ? `${Number(recordData.payment)}/-`
-                      : "0.00/-",
+                  text: `${
+                    lastRecord?.sessions?.reduce(
+                      (sum, s) => sum + (s.payment || 0),
+                      0
+                    ) || 0
+                  }/-`,
                   alignment: "right",
                 },
+              ],
+              // Assessment Fee row
+              [
                 {
-                  text:
-                    recordData.payment != null
-                      ? `${
-                          Number(recordData.payment) *
-                          patientData.records.length
-                        }/-`
-                      : "0.00/-",
+                  text: "Assessment Fee",
+                  colSpan: 4,
                   alignment: "right",
+                  bold: true,
+                },
+                {},
+                {},
+                {},
+                {
+                  text: `${parsePayment(lastRecord?.patientForm?.payment)}/-`,
+                  alignment: "right",
+                },
+              ],
+
+              // Grand Total row
+              [
+                {
+                  text: "Grand Total",
+                  colSpan: 4,
+                  alignment: "right",
+                  bold: true,
+                },
+                {},
+                {},
+                {},
+                {
+                  text: `${
+                    parsePayment(lastRecord?.patientForm?.payment) +
+                    lastRecord?.sessions?.reduce(
+                      (sum, s) => sum + parsePayment(s.payment),
+                      0
+                    )
+                  }/-`,
+                  alignment: "right",
+                  bold: true,
                 },
               ],
             ],
           },
           layout: "noBorders",
-          margin: [0, 30, 0, 0],
-        },
-        {
-          text: [
-            {
-              text: "Payment received at Eraya Health Care for the given treatment. If you have any questions concerning this invoice contact Eraya Health Care",
-            },
-          ],
-          margin: [0, 50, 0, 0],
-        },
-        {
-          text: [{ text: "Thank you Eraya Health Care" }],
           margin: [0, 20, 0, 0],
         },
         {
+          text: "Payment received at Eraya Health Care for the given treatment. If you have any questions concerning this invoice contact Eraya Health Care",
+          margin: [0, 40, 0, 0],
+        },
+        { text: "Thank you Eraya Health Care", margin: [0, 15, 0, 0] },
+        {
           columns: [
             {},
-            {
-              image: signDataUri,
-              width: 120,
-              margin: [20, 70, 0, 0],
-            },
+            { image: signDataUri, width: 120, margin: [0, 40, 0, 0] },
           ],
         },
-        {
-          text: [{ text: "Dr. Disha Shah" }],
-          fontSize: 14,
-          alignment: "right",
-          margin: [0, 20, 0, 0],
-        },
+        { text: "Dr. Disha Shah", alignment: "right", margin: [0, 10, 0, 0] },
         {
           columns: [
             {},
-            {
-              image: stampDataUri,
-              width: 120,
-              margin: [20, 20, 0, 0],
-            },
+            { image: stampDataUri, width: 120, margin: [0, 10, 0, 0] },
           ],
         },
       ],
       styles: {
-        header: { fontSize: 14, margin: [0, 10, 0, 0] },
-        header2: { fontSize: 14, margin: [0, 0, 0, 10] },
-        subheader: { fontSize: 14, bold: true, alignment: "right" },
+        header: { fontSize: 14 },
         invoiceTitle: { fontSize: 25, bold: true, color: "#13756f" },
       },
-      footer: function () {
-        return {
-          margin: [0, 0, 0, 0],
-          table: {
-            widths: ["*", "*", "*"],
-            body: [
-              [
-                {
-                  text: "+91 84870 77767",
-                  fontSize: 10,
-                  margin: [10, 9],
-                  color: "#ffffff",
-                },
-                {
-                  text: "B/513, AWS-3, Manav Mandir Road Memnagar, Ahmedabad (Gujarat), 380052",
-                  fontSize: 10,
-                  margin: [10, 5],
-                  color: "#ffffff",
-                },
-                {
-                  text: "erayahealthcare@gmail.com",
-                  fontSize: 10,
-                  margin: [30, 9],
-                  color: "#ffffff",
-                },
-              ],
+      footer: () => ({
+        table: {
+          widths: ["*", "*", "*"],
+          body: [
+            [
+              { text: "+91 84870 77767", color: "#fff", fontSize: 10 },
+              {
+                text: "B/513, AWS-3, Manav Mandir Road Memnagar, Ahmedabad (Gujarat), 380052",
+                color: "#fff",
+                fontSize: 10,
+              },
+              {
+                text: "erayahealthcare@gmail.com",
+                color: "#fff",
+                fontSize: 10,
+              },
             ],
-          },
-          layout: {
-            fillColor: function () {
-              return "#166964";
-            },
-            hLineWidth: function () {
-              return 0;
-            },
-            vLineWidth: function () {
-              return 0;
-            },
-          },
-          margin: [0, 0, 0, 0],
-        };
-      },
+          ],
+        },
+        layout: {
+          fillColor: () => "#166964",
+          hLineWidth: () => 0,
+          vLineWidth: () => 0,
+        },
+      }),
     };
 
-    const fonts = {
+    const printer = new PdfPrinter({
       Roboto: {
         normal: path.join(__dirname, "../fonts/Roboto-Regular.ttf"),
         bold: path.join(__dirname, "../fonts/Roboto-Medium.ttf"),
-        italics: path.join(__dirname, "../fonts/Roboto-Italic.ttf"),
-        bolditalics: path.join(__dirname, "../fonts/Roboto-MediumItalic.ttf"),
       },
-    };
+    });
 
-    const printer = new PdfPrinter(fonts);
     const pdfDoc = printer.createPdfKitDocument(docDefinition);
-
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
       `inline; filename=${patientData._id}.pdf`
     );
-
     pdfDoc.pipe(res);
     pdfDoc.end();
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // ===========================
 // GENERATE PRESCRIPTION
 // ===========================
+// exports.generatePrescription = async (req, res) => {
+//   try {
+//     const imagePath = path.resolve(__dirname, "../images/ErayaLogo.png");
+//     const signPath = path.resolve(__dirname, "../images/Disha Sign.png");
+//     const stampPath = path.resolve(__dirname, "../images/stamp.png");
+//     const lightStampPath = path.resolve(__dirname, "../images/LightStamp.png");
+
+//     let imageDataUri = null;
+//     let signDataUri = null;
+//     let stampDataUri = null;
+//     let lightStampDataUri = null;
+
+//     try {
+//       const imageBase64 = fs.readFileSync(imagePath).toString("base64");
+//       const signBase64 = fs.readFileSync(signPath).toString("base64");
+//       const stampBase64 = fs.readFileSync(stampPath).toString("base64");
+//       const lightStampBase64 = fs
+//         .readFileSync(lightStampPath)
+//         .toString("base64");
+
+//       imageDataUri = `data:image/png;base64,${imageBase64}`;
+//       signDataUri = `data:image/png;base64,${signBase64}`;
+//       stampDataUri = `data:image/png;base64,${stampBase64}`;
+//       lightStampDataUri = `data:image/png;base64,${lightStampBase64}`;
+//     } catch (err) {
+//       console.error("Image load error:", err.message);
+//     }
+
+//     const { startDate, endDate, patient, doctor } = req.query;
+
+//     if (!patient || !startDate || !endDate || !doctor) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Missing required fields." });
+//     }
+
+//     // Parse dates
+//     let parsedStart = moment(startDate, "DD/MM/YYYY").startOf("day").toDate();
+//     let parsedEnd = moment(endDate, "DD/MM/YYYY").endOf("day").toDate();
+
+//     // Aggregate appointment data
+//     const data = await Appointment.aggregate([
+//       {
+//         $match: {
+//           patientId: new mongoose.Types.ObjectId(patient),
+//           doctorId: new mongoose.Types.ObjectId(doctor),
+//           date: { $gte: parsedStart, $lte: parsedEnd },
+//           isDeleted: false,
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "patients",
+//           localField: "patientId",
+//           foreignField: "_id",
+//           as: "patientData",
+//         },
+//       },
+//       {
+//         $lookup: {
+//           from: "doctors",
+//           localField: "doctorId",
+//           foreignField: "_id",
+//           as: "doctorData",
+//         },
+//       },
+//       {
+//         $sort: {
+//           date: -1,
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           date: 1,
+//           treatment: 1,
+//           description: 1,
+//           payment: { $toDouble: "$payment" },
+//           patientName: { $arrayElemAt: ["$patientData.name", 0] },
+//           doctorName: { $arrayElemAt: ["$doctorData.name", 0] },
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: "$patientName",
+//           doctorName: { $first: "$doctorName" },
+//           date: { $first: "$date" },
+//           records: {
+//             $push: {
+//               date: "$date",
+//               treatment: "$treatment",
+//               description: "$description",
+//               payment: "$payment",
+//             },
+//           },
+//           totalAmount: { $sum: "$payment" },
+//         },
+//       },
+//     ]);
+
+//     if (!data || data.length === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "No data found for the given patient and date range.",
+//       });
+//     }
+
+//     const patientData = data[0];
+
+//     const docDefinition = {
+//       content: [
+//         {
+//           columns: [
+//             {},
+//             {
+//               image: imageDataUri,
+//               width: 150,
+//             },
+//           ],
+//           columnGap: 10,
+//           margin: [0, 0, 0, 20],
+//         },
+//         {
+//           columns: [
+//             {
+//               width: "auto",
+//               text: [
+//                 { text: "Patient Name", bold: true },
+//                 { text: " :- ", bold: true },
+//               ],
+//               margin: [0, 0, 5, 0],
+//             },
+//             {
+//               width: "*",
+//               stack: [
+//                 { text: `${patientData._id || ""}`, margin: [0, 0, 0, 2] },
+//                 {
+//                   canvas: [
+//                     {
+//                       type: "line",
+//                       x1: 0,
+//                       y1: 0,
+//                       x2: 400,
+//                       y2: 0,
+//                       lineWidth: 0.5,
+//                     },
+//                   ],
+//                 },
+//               ],
+//             },
+//           ],
+//           margin: [0, 0, 0, 20],
+//         },
+//         {
+//           columns: [
+//             {
+//               width: "auto",
+//               text: [
+//                 { text: "Gender", bold: true },
+//                 { text: " :- ", bold: true },
+//               ],
+//               margin: [0, 0, 5, 0],
+//             },
+//             {
+//               width: "*",
+//               stack: [
+//                 { text: "Male", margin: [50, 0, 0, 2] },
+//                 {
+//                   canvas: [
+//                     {
+//                       type: "line",
+//                       x1: 0,
+//                       y1: 0,
+//                       x2: 150,
+//                       y2: 0,
+//                       lineWidth: 0.5,
+//                     },
+//                   ],
+//                 },
+//               ],
+//             },
+//             {
+//               width: "auto",
+//               text: [
+//                 { text: "Date", bold: true },
+//                 { text: " :- ", bold: true },
+//               ],
+//               margin: [0, 0, 5, 0],
+//             },
+//             {
+//               width: "*",
+//               stack: [
+//                 { text: moment().format("DD/MM/YYYY"), margin: [50, 0, 0, 2] },
+//                 {
+//                   canvas: [
+//                     {
+//                       type: "line",
+//                       x1: 0,
+//                       y1: 0,
+//                       x2: 150,
+//                       y2: 0,
+//                       lineWidth: 0.5,
+//                     },
+//                   ],
+//                 },
+//               ],
+//             },
+//           ],
+//           margin: [0, 0, 0, 20],
+//         },
+//         {
+//           text: [{ text: "Rx," }],
+//           fontSize: 16,
+//           bold: true,
+//           margin: [0, 20, 0, 0],
+//         },
+//         {
+//           image: lightStampDataUri,
+//           width: 250,
+//           margin: [0, 80, 0, 0],
+//           alignment: "center",
+//         },
+//         {},
+//         {
+//           alignment: "right",
+//           columns: [
+//             {},
+//             {},
+//             {
+//               text: [
+//                 { text: "Consulting Doctor Name", bold: true },
+//                 { text: " :- ", bold: true },
+//               ],
+//             },
+//             {
+//               stack: [
+//                 {
+//                   text: "Dr. Disha Shah",
+//                   margin: [0, 0, 0, 2],
+//                   alignment: "center",
+//                 },
+//                 {
+//                   canvas: [
+//                     {
+//                       type: "line",
+//                       x1: 0,
+//                       y1: 0,
+//                       x2: 150,
+//                       y2: 0,
+//                       lineWidth: 0.5,
+//                     },
+//                   ],
+//                   margin: [0, 0, 0, 0],
+//                 },
+//               ],
+//             },
+//           ],
+//           margin: [-60, 180, 0, 0],
+//         },
+//         {
+//           alignment: "right",
+//           columns: [
+//             {},
+//             {},
+//             {
+//               text: [
+//                 { text: "Signature", bold: true },
+//                 { text: " :- ", bold: true },
+//               ],
+//             },
+//             {
+//               stack: [
+//                 {
+//                   text: "",
+//                   margin: [0, 0, 0, 2],
+//                   alignment: "center",
+//                 },
+//                 {
+//                   canvas: [
+//                     {
+//                       type: "line",
+//                       x1: 0,
+//                       y1: 15,
+//                       x2: 150,
+//                       y2: 15,
+//                       lineWidth: 0.5,
+//                     },
+//                   ],
+//                   margin: [0, 0, 0, 0],
+//                 },
+//               ],
+//             },
+//           ],
+//           margin: [-60, 20, 0, 0],
+//         },
+//       ],
+//       styles: {
+//         header: { fontSize: 14, margin: [0, 10, 0, 0] },
+//         header2: { fontSize: 14, margin: [0, 0, 0, 10] },
+//         subheader: { fontSize: 14, bold: true, alignment: "right" },
+//         invoiceTitle: { fontSize: 25, bold: true, color: "#13756f" },
+//       },
+//       footer: function () {
+//         return {
+//           margin: [0, 0, 0, 0],
+//           table: {
+//             widths: ["*", "*", "*"],
+//             body: [
+//               [
+//                 {
+//                   text: "+91 84870 77767",
+//                   fontSize: 10,
+//                   margin: [10, 9],
+//                   color: "#ffffff",
+//                 },
+//                 {
+//                   text: "B/513, AWS-3, Manav Mandir Road Memnagar, Ahmedabad (Gujarat), 380052",
+//                   fontSize: 10,
+//                   margin: [10, 5],
+//                   color: "#ffffff",
+//                 },
+//                 {
+//                   text: "erayahealthcare@gmail.com",
+//                   fontSize: 10,
+//                   margin: [30, 9],
+//                   color: "#ffffff",
+//                 },
+//               ],
+//             ],
+//           },
+//           layout: {
+//             fillColor: function () {
+//               return "#166964";
+//             },
+//             hLineWidth: function () {
+//               return 0;
+//             },
+//             vLineWidth: function () {
+//               return 0;
+//             },
+//           },
+//           margin: [0, 0, 0, 0],
+//         };
+//       },
+//     };
+
+//     const fonts = {
+//       Roboto: {
+//         normal: path.join(__dirname, "../fonts/Roboto-Regular.ttf"),
+//         bold: path.join(__dirname, "../fonts/Roboto-Medium.ttf"),
+//         italics: path.join(__dirname, "../fonts/Roboto-Italic.ttf"),
+//         bolditalics: path.join(__dirname, "../fonts/Roboto-MediumItalic.ttf"),
+//       },
+//     };
+
+//     const printer = new PdfPrinter(fonts);
+//     const pdfDoc = printer.createPdfKitDocument(docDefinition);
+
+//     res.setHeader("Content-Type", "application/pdf");
+//     res.setHeader(
+//       "Content-Disposition",
+//       `inline; filename=${patientData._id}.pdf`
+//     );
+
+//     pdfDoc.pipe(res);
+//     pdfDoc.end();
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
 exports.generatePrescription = async (req, res) => {
   try {
+    // ===== Load images =====
     const imagePath = path.resolve(__dirname, "../images/ErayaLogo.png");
     const signPath = path.resolve(__dirname, "../images/Disha Sign.png");
     const stampPath = path.resolve(__dirname, "../images/stamp.png");
@@ -1608,43 +2651,48 @@ exports.generatePrescription = async (req, res) => {
     let lightStampDataUri = null;
 
     try {
-      const imageBase64 = fs.readFileSync(imagePath).toString("base64");
-      const signBase64 = fs.readFileSync(signPath).toString("base64");
-      const stampBase64 = fs.readFileSync(stampPath).toString("base64");
-      const lightStampBase64 = fs
+      imageDataUri = `data:image/png;base64,${fs
+        .readFileSync(imagePath)
+        .toString("base64")}`;
+      signDataUri = `data:image/png;base64,${fs
+        .readFileSync(signPath)
+        .toString("base64")}`;
+      stampDataUri = `data:image/png;base64,${fs
+        .readFileSync(stampPath)
+        .toString("base64")}`;
+      lightStampDataUri = `data:image/png;base64,${fs
         .readFileSync(lightStampPath)
-        .toString("base64");
-
-      imageDataUri = `data:image/png;base64,${imageBase64}`;
-      signDataUri = `data:image/png;base64,${signBase64}`;
-      stampDataUri = `data:image/png;base64,${stampBase64}`;
-      lightStampDataUri = `data:image/png;base64,${lightStampBase64}`;
+        .toString("base64")}`;
     } catch (err) {
       console.error("Image load error:", err.message);
     }
 
     const { startDate, endDate, patient, doctor } = req.query;
 
-    if (!patient || !startDate || !endDate || !doctor) {
+    if (!patient || !doctor) {
       return res
         .status(400)
-        .json({ success: false, message: "Missing required fields." });
+        .json({ success: false, message: "Patient and doctor are required." });
     }
 
-    // Parse dates
-    let parsedStart = moment(startDate, "DD/MM/YYYY").startOf("day").toDate();
-    let parsedEnd = moment(endDate, "DD/MM/YYYY").endOf("day").toDate();
+    // ===== Build query =====
+    let matchQuery = {
+      patientId: new mongoose.Types.ObjectId(patient),
+      doctorId: new mongoose.Types.ObjectId(doctor),
+      isDeleted: false,
+    };
 
-    // Aggregate appointment data
+    if (startDate && endDate) {
+      const parsedStart = moment(startDate, "DD/MM/YYYY")
+        .startOf("day")
+        .toDate();
+      const parsedEnd = moment(endDate, "DD/MM/YYYY").endOf("day").toDate();
+      matchQuery.date = { $gte: parsedStart, $lte: parsedEnd };
+    }
+
+    // ===== Aggregate appointment data =====
     const data = await Appointment.aggregate([
-      {
-        $match: {
-          patientId: new mongoose.Types.ObjectId(patient),
-          doctorId: new mongoose.Types.ObjectId(doctor),
-          date: { $gte: parsedStart, $lte: parsedEnd },
-          isDeleted: false,
-        },
-      },
+      { $match: matchQuery },
       {
         $lookup: {
           from: "patients",
@@ -1662,10 +2710,14 @@ exports.generatePrescription = async (req, res) => {
         },
       },
       {
-        $sort: {
-          date: -1,
+        $lookup: {
+          from: "patientforms",
+          localField: "patientFormId",
+          foreignField: "_id",
+          as: "patientFormData",
         },
       },
+      { $sort: { date: -1 } },
       {
         $project: {
           _id: 0,
@@ -1675,6 +2727,11 @@ exports.generatePrescription = async (req, res) => {
           payment: { $toDouble: "$payment" },
           patientName: { $arrayElemAt: ["$patientData.name", 0] },
           doctorName: { $arrayElemAt: ["$doctorData.name", 0] },
+          gender: { $arrayElemAt: ["$patientData.gender", 0] },
+          prescriptions: {
+            $arrayElemAt: ["$patientFormData.prescriptions", 0],
+          },
+          sessions: 1,
         },
       },
       {
@@ -1682,15 +2739,9 @@ exports.generatePrescription = async (req, res) => {
           _id: "$patientName",
           doctorName: { $first: "$doctorName" },
           date: { $first: "$date" },
-          records: {
-            $push: {
-              date: "$date",
-              treatment: "$treatment",
-              description: "$description",
-              payment: "$payment",
-            },
-          },
-          totalAmount: { $sum: "$payment" },
+          gender: { $first: "$gender" },
+          patientPrescriptions: { $first: "$prescriptions" },
+          sessions: { $push: "$sessions" },
         },
       },
     ]);
@@ -1698,22 +2749,64 @@ exports.generatePrescription = async (req, res) => {
     if (!data || data.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "No data found for the given patient and date range.",
+        message:
+          "No data found for the given patient (and date range if provided).",
       });
     }
 
     const patientData = data[0];
 
+    // ===== Collect all prescriptions =====
+    let allPrescriptions = [];
+
+    if (Array.isArray(patientData.patientPrescriptions)) {
+      allPrescriptions.push(...patientData.patientPrescriptions);
+    }
+
+    if (Array.isArray(patientData.sessions)) {
+      patientData.sessions.forEach((sessArr) => {
+        if (Array.isArray(sessArr)) {
+          sessArr.forEach((sess) => {
+            if (Array.isArray(sess.prescriptions)) {
+              allPrescriptions.push(...sess.prescriptions);
+            }
+          });
+        }
+      });
+    }
+
+    // Map prescriptions into PDF content
+    const prescriptionContent = allPrescriptions.map((p, idx) => ({
+      stack: [
+        {
+          text: `${idx + 1}. Medicine Name: ${
+            p.name || p.medicine?.name || "-"
+          }`,
+          margin: [0, 2, 0, 2],
+        },
+        { text: `   Dosage: ${p.dosage || "-"}`, margin: [0, 0, 0, 2] },
+        { text: `   Frequency: ${p.frequency || "-"}`, margin: [0, 0, 0, 2] },
+        p.instruction
+          ? {
+              text: `   Instruction: ${p.instruction}`,
+              italics: true,
+              margin: [0, 0, 0, 5],
+            }
+          : {},
+        {
+          canvas: [
+            { type: "line", x1: 0, y1: 0, x2: 500, y2: 0, lineWidth: 0.3 },
+          ],
+          margin: [0, 2, 0, 5],
+        },
+      ],
+    }));
+
+    // ===== Build PDF =====
     const docDefinition = {
       content: [
         {
-          columns: [
-            {},
-            {
-              image: imageDataUri,
-              width: 150,
-            },
-          ],
+          columns: [{}, { image: imageDataUri, width: 150 }],
           columnGap: 10,
           margin: [0, 0, 0, 20],
         },
@@ -1761,7 +2854,7 @@ exports.generatePrescription = async (req, res) => {
             {
               width: "*",
               stack: [
-                { text: "Male", margin: [50, 0, 0, 2] },
+                { text: patientData.gender || "N/A", margin: [50, 0, 0, 2] },
                 {
                   canvas: [
                     {
@@ -1809,15 +2902,23 @@ exports.generatePrescription = async (req, res) => {
           text: [{ text: "Rx," }],
           fontSize: 16,
           bold: true,
-          margin: [0, 20, 0, 0],
+          margin: [0, 20, 0, 5],
         },
+        {
+          text: "Prescription Details",
+          fontSize: 14,
+          bold: true,
+          margin: [0, 5, 0, 5],
+          pageBreak: "avoid",
+        },
+        ...prescriptionContent,
         {
           image: lightStampDataUri,
           width: 250,
-          margin: [0, 80, 0, 0],
           alignment: "center",
+          margin: [0, 10, 0, 0],
+          pageBreak: "avoid",
         },
-        {},
         {
           alignment: "right",
           columns: [
@@ -1832,7 +2933,7 @@ exports.generatePrescription = async (req, res) => {
             {
               stack: [
                 {
-                  text: "Dr. Disha Shah",
+                  text: patientData.doctorName || "Dr. Disha Shah",
                   margin: [0, 0, 0, 2],
                   alignment: "center",
                 },
@@ -1850,9 +2951,10 @@ exports.generatePrescription = async (req, res) => {
                   margin: [0, 0, 0, 0],
                 },
               ],
+              pageBreak: "avoid",
             },
           ],
-          margin: [-60, 180, 0, 0],
+          margin: [-60, 10, 0, 0],
         },
         {
           alignment: "right",
@@ -1867,11 +2969,7 @@ exports.generatePrescription = async (req, res) => {
             },
             {
               stack: [
-                {
-                  text: "",
-                  margin: [0, 0, 0, 2],
-                  alignment: "center",
-                },
+                { text: "", margin: [0, 0, 0, 2], alignment: "center" },
                 {
                   canvas: [
                     {
@@ -1886,9 +2984,10 @@ exports.generatePrescription = async (req, res) => {
                   margin: [0, 0, 0, 0],
                 },
               ],
+              pageBreak: "avoid",
             },
           ],
-          margin: [-60, 20, 0, 0],
+          margin: [-60, 10, 0, 0],
         },
       ],
       styles: {
@@ -1926,17 +3025,10 @@ exports.generatePrescription = async (req, res) => {
             ],
           },
           layout: {
-            fillColor: function () {
-              return "#166964";
-            },
-            hLineWidth: function () {
-              return 0;
-            },
-            vLineWidth: function () {
-              return 0;
-            },
+            fillColor: () => "#166964",
+            hLineWidth: () => 0,
+            vLineWidth: () => 0,
           },
-          margin: [0, 0, 0, 0],
         };
       },
     };
@@ -1958,7 +3050,6 @@ exports.generatePrescription = async (req, res) => {
       "Content-Disposition",
       `inline; filename=${patientData._id}.pdf`
     );
-
     pdfDoc.pipe(res);
     pdfDoc.end();
   } catch (error) {
@@ -1966,7 +3057,6 @@ exports.generatePrescription = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // ===========================
 // GET APPOINTMENTS BY PATIENT
 // ===========================
@@ -2551,7 +3641,6 @@ exports.getAvailableSlots = async (req, res) => {
 //   }
 // };
 
-
 exports.createAppointmentWithSlot = async (req, res) => {
   try {
     const {
@@ -2586,8 +3675,7 @@ exports.createAppointmentWithSlot = async (req, res) => {
     /* --------------------------------
        NORMALIZER (prevents enum errors)
     --------------------------------- */
-    const normalize = (v) =>
-      v === "" || v === undefined ? null : v;
+    const normalize = (v) => (v === "" || v === undefined ? null : v);
 
     /* --------------------------------
        SLOT AVAILABILITY CHECK
@@ -2695,9 +3783,7 @@ exports.createAppointmentWithSlot = async (req, res) => {
       // date: new Date(appointmentDate),
     });
 
-    const populatedAppointment = await Appointment.findById(
-      newAppointment._id
-    )
+    const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("doctorId", "name email phone docSpeciality")
       .populate("patientId", "name email phone gender")
       .populate("patientFormId");
