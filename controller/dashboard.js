@@ -14,33 +14,85 @@ exports.dashboardCount = async (req, res) => {
         const patientFormCount = await Appointment.countDocuments({ isDeleted: false });
 
         // Calculate income (total payment from appointments)
-        const incomeResult = await Appointment.aggregate([
-            { $match: { isDeleted: false } },
-            {
-                $group: {
-                    _id: null,
-                    totalIncome: { $sum: '$payment' },
-                    totalPaid: { $sum: '$paidAmount' },
-                }
-            }
-        ]);
+        // const incomeResult = await Appointment.aggregate([
+        //     { $match: { isDeleted: false } },
+        //     {
+        //         $group: {
+        //             _id: null,
+        //             totalIncome: { $sum: '$payment' },
+        //             totalPaid: { $sum: '$paidAmount' },
+        //         }
+        //     }
+        // ]);
 
-        const totalIncome = incomeResult[0]?.totalIncome || 0;
-        const totalPaid = incomeResult[0]?.totalPaid || 0;
-        const remainingAmount = totalIncome - totalPaid;
+        // const totalIncome = incomeResult[0]?.totalIncome || 0;
+        // const totalPaid = incomeResult[0]?.totalPaid || 0;
+        // const remainingAmount = totalIncome - totalPaid;
 
-        // Calculate total expenses
-        const expenseResult = await Expense.aggregate([
-            { $match: { isDeleted: false } },
-            {
-                $group: {
-                    _id: null,
-                    totalExpense: { $sum: '$amount' },
-                }
-            }
-        ]);
+        // // Calculate total expenses
+        // const expenseResult = await Expense.aggregate([
+        //     { $match: { isDeleted: false } },
+        //     {
+        //         $group: {
+        //             _id: null,
+        //             totalExpense: { $sum: '$amount' },
+        //         }
+        //     }
+        // ]);
 
-        const totalExpense = expenseResult[0]?.totalExpense || 0;
+        // const totalExpense = expenseResult[0]?.totalExpense || 0;
+
+        // ------------------ Calculate income and payments from sessions ------------------
+// ------------------ Calculate income and payments from sessions ------------------
+const incomeResult = await Appointment.aggregate([
+  { $match: { isDeleted: false } },
+  { 
+    $unwind: { path: "$sessions", preserveNullAndEmptyArrays: true } // keep appointments without sessions
+  },
+  {
+    $group: {
+      _id: null,
+      totalIncome: { 
+        $sum: { $ifNull: ["$sessions.payment", 0] } // fallback 0 if payment is missing
+      },
+      totalPaid: { 
+        $sum: { $ifNull: ["$sessions.paidAmount", 0] } // fallback 0 if paidAmount is missing
+      },
+    }
+  }
+]);
+
+let totalIncome = incomeResult[0]?.totalIncome || 0;
+let totalPaid = incomeResult[0]?.totalPaid || 0;
+let remainingAmount = totalIncome - totalPaid;
+
+// ------------------ Add PatientForm payments ------------------
+const patientForms = await PatientFormSchema.find({ isDeleted: false }).select("payment").lean();
+
+patientForms.forEach(form => {
+  if (form.payment) {
+    // Extract numeric value from strings like "100-infinite"
+    const match = form.payment.match(/\d+/);
+    const numericPayment = match ? parseFloat(match[0]) : 0;
+
+    totalIncome += numericPayment;
+    totalPaid += numericPayment; // assume fully paid
+  }
+});
+
+// ------------------ Calculate total expenses ------------------
+const expenseResult = await Expense.aggregate([
+  { $match: { isDeleted: false } },
+  {
+    $group: {
+      _id: null,
+      totalExpense: { $sum: { $ifNull: ["$amount", 0] } },
+    }
+  }
+]);
+
+const totalExpense = expenseResult[0]?.totalExpense || 0;
+
 
         return res.status(200).json({
             patientCount,
