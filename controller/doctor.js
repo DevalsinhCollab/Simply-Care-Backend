@@ -39,8 +39,16 @@ exports.addDoctor = async (req, res) => {
 exports.getDoctors = async (req, res) => {
   try {
     const { page = 0, pageSize = 0, search } = req.query;
-
+   
     let findObject = {isDeleted: false};
+    console.log(req.user)
+
+    if(req.user.role === "A" && req.user.clinicId){
+      findObject.clinicId = req.user.clinicId
+    }
+    if(req.user.role === "D" && req.user.doctorId){
+      findObject._id = req.user.doctorId
+    }
 
     if (search && search !== "") {
       findObject = {
@@ -54,7 +62,7 @@ exports.getDoctors = async (req, res) => {
 
     const skip = page * pageSize;
     const totalCount = await Doctor.countDocuments(findObject);
-    const doctors = await Doctor.find(findObject).populate('docSpeciality')
+    const doctors = await Doctor.find(findObject).populate('docSpeciality clinicId')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)

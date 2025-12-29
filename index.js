@@ -40,6 +40,7 @@ app.use("/api/doctorSpeciality", require("./router/doctorSpeciality"));
 app.use("/api/unavailability", require("./router/doctorUnavailability"));
 app.use("/api/expense", require("./router/expense"));
 app.use("/api/medicine", require("./router/medicine"));
+app.use("/api/clinic", require("./router/clinic"));
 
 const activeUsers = {};
 const userSocketMap = {};

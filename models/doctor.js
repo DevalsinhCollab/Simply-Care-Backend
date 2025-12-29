@@ -15,6 +15,10 @@ const doctorSchema = mongoose.Schema(
       type: String,
       trim: true,
     },
+    clinicId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "clinic",
+    },
     // docSpeciality: {
     //   type: String,
     // },

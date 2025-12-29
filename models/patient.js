@@ -58,6 +58,10 @@ const patientSchema = mongoose.Schema(
       trim: true,
       default: null,
     },
+    clinicId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "clinic",
+    },
     isDeleted: {
       type: Boolean,
       default: false,

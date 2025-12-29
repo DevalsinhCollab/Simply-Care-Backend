@@ -33,6 +33,10 @@ const expenseSchema = new mongoose.Schema(
       enum: ['cash', 'bank', 'check', 'upi' ,'other'],
       default: 'cash',
     },
+    clinicId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'clinic',
+    },
     isDeleted: {
       type: Boolean,
       default: false,

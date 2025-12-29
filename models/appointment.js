@@ -132,6 +132,10 @@ const sessionSchema = new mongoose.Schema(
 
 const appointmentSchema = new mongoose.Schema(
   {
+    clinicId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "clinic",
+    },
     doctorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "doctor",

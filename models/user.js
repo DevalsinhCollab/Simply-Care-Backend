@@ -33,12 +33,17 @@ const userSchema = mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["A", "U", "D"],
+      enum: ["A", "U", "D" , "SA"],
       default: "U",
     },
     doctorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "doctor",
+      default: null,
+    },
+    clinicId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "clinic",
       default: null,
     },
     // docSpeciality: {

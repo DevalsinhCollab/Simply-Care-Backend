@@ -264,6 +264,10 @@ const patientFormSchema = new mongoose.Schema(
             ],
             default: [],
         },
+        clinicId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "clinic",
+        },
         isDeleted: {
             type: Boolean,
             default: false,

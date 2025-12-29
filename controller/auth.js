@@ -92,6 +92,7 @@ exports.verifyOtp = async (req, res) => {
       userId: user.id,
       role: user.role,
        doctorId: user.doctorId,
+        clinicId : user.clinicId,
     };
 
     const expiresTime = user.keepMeLoggedIn ? "24h" : "24h";
@@ -111,7 +112,7 @@ exports.verifyOtp = async (req, res) => {
         phone: user.phone,
         role: user.role,
         docSpeciality: user.docSpeciality,
-        doctorId : user.doctorId
+        doctorId : user.doctorId,
       },
     });
   } catch (error) {
