@@ -1121,13 +1121,28 @@ exports.generateReport = async (req, res) => {
           doctorName: { $arrayElemAt: ["$doctorData.name", 0] },
           treatment: "$patientForm.treatment",
           description: "$patientForm.description",
+          // assessmentFee: {
+          //   $cond: [
+          //     { $eq: ["$patientForm.payment", "FOC"] },
+          //     0,
+          //     { $toDouble: "$patientForm.payment" },
+          //   ],
+          // },
           assessmentFee: {
-            $cond: [
-              { $eq: ["$patientForm.payment", "FOC"] },
-              0,
-              { $toDouble: "$patientForm.payment" },
-            ],
-          },
+  $cond: [
+    { $eq: ["$patientForm.payment", "FOC"] },
+    0,
+    {
+      $convert: {
+        input: "$patientForm.payment",
+        to: "double",
+        onError: 0, // 👈 handles "" or invalid values
+        onNull: 0,  // 👈 handles null / missing
+      },
+    },
+  ],
+},
+
           treatmentDate: "$patientForm.date",
           sessions: 1,
         },
