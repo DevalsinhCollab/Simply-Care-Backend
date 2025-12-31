@@ -252,6 +252,36 @@ exports.getPatientsForm = async (req, res) => {
   }
 };
 
+// New: get history (all forms) for a specific patient (clinic-scoped)
+exports.getPatientHistory = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    if (!patientId) {
+      return res.status(400).json({ success: false, message: 'patientId is required' });
+    }
+
+    const userLoggedClinicId = req.user && req.user.clinicId;
+
+    const findObject = { isDeleted: false, 'patient._id': patientId };
+    if (userLoggedClinicId) findObject.clinicId = userLoggedClinicId;
+
+
+    console.log('getPatientHistory findObject', findObject);
+
+    const forms = await PatientFormSchema.find(findObject)
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    const totalCount = forms.length;
+
+    return res.status(200).json({ success: true, data: forms, totalCount });
+  } catch (error) {
+    console.error('getPatientHistory error', error);
+    return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 // exports.updatePatientForm = async (req, res) => {
 //   try {
 //     const { id } = req.params;
