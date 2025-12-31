@@ -6,7 +6,16 @@ const Medicine = require("../models/medicine");
  */
 exports.getAllMedicines = async (req, res) => {
   try {
-    const medicines = await Medicine.find({ isDeleted: false }).sort({
+
+    const loggedUserClinicId = req.user.clinicId;
+
+    const findObject = { isDeleted: false };
+
+    if (loggedUserClinicId) {
+      findObject.clinicId = loggedUserClinicId;
+    }
+
+    const medicines = await Medicine.find(findObject).populate("clinicId").sort({
       createdAt: -1,
     });
 
@@ -56,6 +65,8 @@ exports.getMedicineById = async (req, res) => {
 exports.createMedicine = async (req, res) => {
   try {
     const { name } = req.body;
+    // determine clinicId: prefer logged user's clinic, fall back to request body
+    const clinicId = req.user && req.user.clinicId ? req.user.clinicId : req.body.clinicId;
 
     if (!name) {
       return res.status(400).json({ message: "Medicine name is required" });
@@ -64,6 +75,7 @@ exports.createMedicine = async (req, res) => {
     const existingMedicine = await Medicine.findOne({
       name: name.trim(),
       isDeleted: false,
+      clinicId,
     });
 
     if (existingMedicine) {
@@ -72,7 +84,7 @@ exports.createMedicine = async (req, res) => {
       });
     }
 
-    const medicine = await Medicine.create({ name });
+    const medicine = await Medicine.create({ name, clinicId });
 
     return res.status(200).json({
       message: "Medicine created successfully",
@@ -94,11 +106,13 @@ exports.updateMedicine = async (req, res) => {
     const medicineId = req.params.id;
     const data = req.body;
 
-    const medicine = await Medicine.findOneAndUpdate(
-      { _id: medicineId, isDeleted: false },
-      data,
-      { new: true }
-    );
+    // ensure user can only update medicines for their clinic
+    const loggedUserClinicId = req.user && req.user.clinicId;
+
+    const filter = { _id: medicineId, isDeleted: false };
+    if (loggedUserClinicId) filter.clinicId = loggedUserClinicId;
+
+    const medicine = await Medicine.findOneAndUpdate(filter, data, { new: true });
 
     if (!medicine) {
       return res.status(404).json({ message: "Medicine not updated" });
@@ -123,11 +137,11 @@ exports.deleteMedicine = async (req, res) => {
   try {
     const medicineId = req.params.id;
 
-    const medicine = await Medicine.findOneAndUpdate(
-      { _id: medicineId, isDeleted: false },
-      { isDeleted: true },
-      { new: true }
-    );
+    const loggedUserClinicId = req.user && req.user.clinicId;
+    const filter = { _id: medicineId, isDeleted: false };
+    if (loggedUserClinicId) filter.clinicId = loggedUserClinicId;
+
+    const medicine = await Medicine.findOneAndUpdate(filter, { isDeleted: true }, { new: true });
 
     if (!medicine) {
       return res.status(404).json({ message: "Medicine not deleted" });

@@ -1,11 +1,14 @@
+const { default: mongoose } = require("mongoose");
 const Expense = require("../models/expense");
 const XLSX = require("xlsx");
 
 // Create expense
 exports.createExpense = async (req, res) => {
   try {
+    const userLoggedClinicId = req.user.clinicId;
     const { description, amount, expenseDate, month, category, paymentMode } =
       req.body;
+
 
     if (!description || amount === undefined) {
       return res.status(400).json({
@@ -28,6 +31,7 @@ exports.createExpense = async (req, res) => {
         })(),
       category: category || "other",
       paymentMode: paymentMode || "cash",
+      clinicId: userLoggedClinicId,
     });
 
     return res.status(201).json({
@@ -48,7 +52,13 @@ exports.getAllExpenses = async (req, res) => {
   try {
     const { month, category, date, page = 0, pageSize = 10 } = req.query;
 
+    const userLoggedClinicId = req.user.clinicId;
+
     let filter = { isDeleted: false };
+
+    if(userLoggedClinicId){
+      filter.clinicId = userLoggedClinicId;
+    }
 
     // Filter by month or specific date
     if (month) {
@@ -70,7 +80,7 @@ exports.getAllExpenses = async (req, res) => {
 
     const skip = Number(page) * Number(pageSize);
 
-    const expenses = await Expense.find(filter)
+    const expenses = await Expense.find(filter).populate("clinicId")
       .sort({ expenseDate: -1 })
       .skip(skip)
       .limit(Number(pageSize));
@@ -246,29 +256,120 @@ exports.getExpenseSummary = async (req, res) => {
 };
 
 // Get expense statistics for dashboard (with count and breakdown)
+// exports.getExpenseStats = async (req, res) => {
+//   try {
+//     const { month, date } = req.query;
+//     const userLoggedClinicId = req.user.clinicId;
+
+//     let filter = { isDeleted: false };
+
+//     if(userLoggedClinicId){
+//       filter.clinicId = userLoggedClinicId;
+//     }
+
+//     // month format: MM-YYYY → convert to ^YYYY-MM
+//     if (month) {
+//       const [mm, yyyy] = month.split("-");
+//       filter.month = `${mm}-${yyyy}`;
+//     } else if (date) {
+//       const startDate = new Date(date);
+//       startDate.setHours(0, 0, 0, 0);
+//       const endDate = new Date(date);
+//       endDate.setHours(23, 59, 59, 999);
+
+//       filter.expenseDate = { $gte: startDate, $lte: endDate };
+//     }
+
+//     const expenseCount = await Expense.countDocuments(filter);
+
+//     // Get category breakdown with descriptions
+//     const summary = await Expense.aggregate([
+//       { $match: filter },
+//       {
+//         $group: {
+//           _id: "$category",
+//           total: { $sum: "$amount" },
+//           count: { $sum: 1 },
+//           descriptions: {
+//             $push: {
+//               description: "$description",
+//               amount: "$amount",
+//             },
+//           },
+//         },
+//       },
+//     ]);
+
+//     const totalExpense = await Expense.aggregate([
+//       { $match: filter },
+//       {
+//         $group: {
+//           _id: null,
+//           total: { $sum: "$amount" },
+//         },
+//       },
+//     ]);
+
+//     return res.status(200).json({
+//       success: true,
+//       data: {
+//         expenseCount,
+//         totalExpense: totalExpense[0]?.total || 0,
+//         byCategory: summary,
+//       },
+//     });
+//   } catch (error) {
+//     return res.status(400).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
 exports.getExpenseStats = async (req, res) => {
   try {
     const { month, date } = req.query;
 
-    let filter = { isDeleted: false };
+    if (!req.user?.clinicId) {
+      return res.status(400).json({
+        success: false,
+        message: "ClinicId missing",
+      });
+    }
 
-    // month format: MM-YYYY → convert to ^YYYY-MM
+    const clinicId = new mongoose.Types.ObjectId(req.user.clinicId);
+
+    // ================= BASE FILTER =================
+    const filter = {
+      isDeleted: false,
+      clinicId,
+    };
+
+    // ================= MONTH FILTER =================
+    // format: MM-YYYY
     if (month) {
-      const [mm, yyyy] = month.split("-");
-      filter.month = `${mm}-${yyyy}`;
-    } else if (date) {
+      filter.month = month;
+    }
+
+    // ================= DATE FILTER =================
+    if (!month && date) {
       const startDate = new Date(date);
       startDate.setHours(0, 0, 0, 0);
+
       const endDate = new Date(date);
       endDate.setHours(23, 59, 59, 999);
 
-      filter.expenseDate = { $gte: startDate, $lte: endDate };
+      filter.expenseDate = {
+        $gte: startDate,
+        $lte: endDate,
+      };
     }
 
+    // ================= COUNTS =================
     const expenseCount = await Expense.countDocuments(filter);
 
-    // Get category breakdown with descriptions
-    const summary = await Expense.aggregate([
+    // ================= CATEGORY BREAKDOWN =================
+    const byCategory = await Expense.aggregate([
       { $match: filter },
       {
         $group: {
@@ -279,13 +380,17 @@ exports.getExpenseStats = async (req, res) => {
             $push: {
               description: "$description",
               amount: "$amount",
+              expenseDate: "$expenseDate",
+              paymentMode: "$paymentMode",
             },
           },
         },
       },
+      { $sort: { total: -1 } },
     ]);
 
-    const totalExpense = await Expense.aggregate([
+    // ================= TOTAL EXPENSE =================
+    const totalExpenseAgg = await Expense.aggregate([
       { $match: filter },
       {
         $group: {
@@ -295,21 +400,25 @@ exports.getExpenseStats = async (req, res) => {
       },
     ]);
 
+    const totalExpense = totalExpenseAgg[0]?.total || 0;
+
     return res.status(200).json({
       success: true,
       data: {
         expenseCount,
-        totalExpense: totalExpense[0]?.total || 0,
-        byCategory: summary,
+        totalExpense,
+        byCategory,
       },
     });
   } catch (error) {
-    return res.status(400).json({
+    console.error("EXPENSE STATS ERROR 👉", error);
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
+
 
 // // Export expense stats as Excel
 // exports.exportExpenseStats = async (req, res) => {

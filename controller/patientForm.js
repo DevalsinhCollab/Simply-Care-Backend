@@ -183,7 +183,15 @@ exports.getPatientsForm = async (req, res) => {
       endDate,
     } = req.query;
 
+    const userLoggedClinicId = req.user.clinicId;
+
+    console.log("User Clinic ID:", req.user);
+
     let findObject = { isDeleted: false };
+
+    if(userLoggedClinicId){
+      findObject.clinicId = userLoggedClinicId;
+    }
 
     if (search && search !== "") {
       findObject = {

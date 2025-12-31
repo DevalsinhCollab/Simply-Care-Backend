@@ -6,9 +6,15 @@ const Clinic = require('../models/clinic');
 exports.getAllClinics = async (req, res) => {
   try {
     const { clinicId } = req.query;
+  const loggedUserClinicId = req.user.clinicId;
+
+  console.log(loggedUserClinicId, "loggedUserClinicId");
 
     const filter = { isDeleted: false };
     if (clinicId) filter._id = clinicId;
+    if( loggedUserClinicId ){
+      filter._id = loggedUserClinicId;
+    }
 
     const clinics = await Clinic.find(filter).sort({ createdAt: -1 });
 

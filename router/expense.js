@@ -9,14 +9,15 @@ const {
   getExpenseStats,
   exportExpenseStats,
 } = require('../controller/expense');
+const verifyToken = require('../middleware/verifyToken');
 
 const router = express.Router();
 
 // Create expense
-router.post('/createExpense', createExpense);
+router.post('/createExpense',verifyToken, createExpense);
 
 // Get all expenses
-router.get('/getAllExpenses', getAllExpenses);
+router.get('/getAllExpenses',verifyToken, getAllExpenses);
 
 // Get expense by ID
 router.get('/getExpenseById/:id', getExpenseById);
@@ -31,7 +32,7 @@ router.put('/deleteExpense/:id', deleteExpense);
 router.get('/getExpenseSummary', getExpenseSummary);
 
 // Get expense statistics for dashboard
-router.get('/getExpenseStats', getExpenseStats);
+router.get('/getExpenseStats',verifyToken, getExpenseStats);
 
 // Export expense statistics as Excel
 router.get('/exportExpenseStats', exportExpenseStats);

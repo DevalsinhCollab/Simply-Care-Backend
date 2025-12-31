@@ -291,6 +291,12 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
+    let clinicId = await Doctor.findById(doctor._id);
+
+    const finalClinicId = clinicId.clinicId;
+
+    console.log("finalClinicId", clinicId);
+
     let finalPatientFormId = patientFormId;
 
     // 👉 If patientFormId is not provided, create a new one
@@ -337,6 +343,7 @@ exports.createAppointment = async (req, res) => {
       remainingAmount: remaining,
       paymentLog,
       docApproval,
+      clinicId: finalClinicId,
     });
 
     return res.status(201).json({
@@ -450,7 +457,12 @@ exports.getAllAppointments = async (req, res) => {
 
     const role = req.user.role;
     const loggedDoctor = req.user.doctorId;
+    const loggedClinic = req.user.clinicId;
 
+    // 🏥 Clinic restriction
+    if (role === "A" && loggedClinic) {
+      filter.clinicId = loggedClinic;
+    }
     // 👨‍⚕️ Doctor restriction
     if (role === "D" && loggedDoctor) {
       filter.doctorId = loggedDoctor;
@@ -490,6 +502,7 @@ exports.getAllAppointments = async (req, res) => {
       .populate("doctorId")
       .populate("patientId")
       .populate("patientFormId")
+      .populate("clinicId")
       .sort({ appointmentDate: -1 })
       .skip(page * pageSize)
       .limit(pageSize);
@@ -1013,37 +1026,70 @@ exports.generateReport = async (req, res) => {
       imageDataUri = `data:image/png;base64,${imageBase64}`;
     } catch (e) {}
 
-    const { patient, doctor, startDate, endDate } = req.query;
+    const { patient, doctor, startDate, endDate, patientFormId } = req.query;
 
-    if (!patient || !doctor) {
+    // if (!patient || !doctor) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Missing required fields",
+    //   });
+    // }
+
+    if (!patientFormId && (!patient || !doctor)) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields",
+        message: "Either patientFormId OR patient & doctor are required",
       });
     }
 
     /* ---------------- DATE FILTER ---------------- */
-    let dateFilter = {};
-    if (startDate && endDate) {
-      dateFilter = {
-        appointmentDate: {
+    // let dateFilter = {};
+    // if (startDate && endDate) {
+    //   dateFilter = {
+    //     appointmentDate: {
+    //       $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
+    //       $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
+    //     },
+    //   };
+    // }
+
+    let matchStage = {
+      isDeleted: false,
+      docApproval: "approved",
+    };
+
+    // ✅ New flow: direct by patientFormId
+    if (patientFormId) {
+      matchStage.patientFormId = new mongoose.Types.ObjectId(patientFormId);
+    }
+    // ✅ Old flow: patient + doctor (+ date)
+    else {
+      matchStage.patientId = new mongoose.Types.ObjectId(patient);
+      matchStage.doctorId = new mongoose.Types.ObjectId(doctor);
+
+      if (startDate && endDate) {
+        matchStage.appointmentDate = {
           $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
           $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
-        },
-      };
+        };
+      }
     }
 
     /* ---------------- DATA ---------------- */
     const data = await Appointment.aggregate([
+      // {
+      //   $match: {
+      //     patientId: new mongoose.Types.ObjectId(patient),
+      //     doctorId: new mongoose.Types.ObjectId(doctor),
+      //     isDeleted: false,
+      //     docApproval: "approved",
+      //     ...dateFilter,
+      //   },
+      // },
       {
-        $match: {
-          patientId: new mongoose.Types.ObjectId(patient),
-          doctorId: new mongoose.Types.ObjectId(doctor),
-          isDeleted: false,
-          docApproval: "approved",
-          ...dateFilter,
-        },
+        $match: matchStage,
       },
+
       {
         $lookup: {
           from: "patientforms",
@@ -1378,7 +1424,7 @@ exports.generateCertificate = async (req, res) => {
       .lean()
       .exec();
 
-      console.log("Certificate Data:", data);
+    console.log("Certificate Data:", data);
 
     if (!data) {
       return res.status(404).json({
@@ -1433,9 +1479,9 @@ exports.generateCertificate = async (req, res) => {
           margin: [0, 10, 0, 10],
         },
         {
-          text: `He/She was diagnosed with ${data.patientFormId.treatment} on ${moment(
-            data.date
-          ).format(
+          text: `He/She was diagnosed with ${
+            data.patientFormId.treatment
+          } on ${moment(data.date).format(
             "DD/MM/YYYY"
           )} and is having difficulty in performing few daily living activities. As per his/her ${
             data.patientFormId.treatment
@@ -1928,33 +1974,57 @@ exports.generateReceipt = async (req, res) => {
       console.error("Image load error:", err.message);
     }
 
-    const { startDate, endDate, patient, doctor } = req.query;
+    // const { startDate, endDate, patient, doctor } = req.query;
+    const { startDate, endDate, patient, doctor, patientFormId } = req.query;
 
-    if (!patient || !doctor) {
+    // if (!patient || !doctor) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Patient and Doctor are required",
+    //   });
+    // }
+
+    if (!patientFormId && (!patient || !doctor)) {
       return res.status(400).json({
         success: false,
-        message: "Patient and Doctor are required",
+        message: "Either patientFormId OR patient & doctor are required",
       });
     }
 
     // Date filter
-    let dateFilter = {};
-    if (startDate && endDate) {
-      dateFilter.date = {
-        $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
-        $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
-      };
+    // let dateFilter = {};
+    // if (startDate && endDate) {
+    //   dateFilter.date = {
+    //     $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
+    //     $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
+    //   };
+    // }
+
+    let matchStage = {
+      isDeleted: false,
+    };
+
+    // ✅ New flow: direct by appointment / patientForm
+    if (patientFormId) {
+      matchStage.patientFormId = new mongoose.Types.ObjectId(patientFormId);
+    }
+    // ✅ Old flow: patient + doctor (+ date)
+    else {
+      matchStage.patientId = new mongoose.Types.ObjectId(patient);
+      matchStage.doctorId = new mongoose.Types.ObjectId(doctor);
+
+      if (startDate && endDate) {
+        matchStage.date = {
+          $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
+          $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
+        };
+      }
     }
 
     // Aggregation with patientFormId lookup
     const data = await Appointment.aggregate([
       {
-        $match: {
-          patientId: new mongoose.Types.ObjectId(patient),
-          doctorId: new mongoose.Types.ObjectId(doctor),
-          isDeleted: false,
-          ...dateFilter,
-        },
+        $match: matchStage,
       },
       {
         $lookup: {
@@ -3065,6 +3135,7 @@ exports.generatePrescription = async (req, res) => {
     /* ---------------- LOAD IMAGES ---------------- */
     let imageDataUri = null;
     let lightStampDataUri = null;
+    let signDataUri = null;
 
     function breakLongWords(text, chunkSize = 12) {
       if (!text) return "-";
@@ -3082,29 +3153,61 @@ exports.generatePrescription = async (req, res) => {
       lightStampDataUri = `data:image/png;base64,${fs
         .readFileSync(path.resolve(__dirname, "../images/LightStamp.png"))
         .toString("base64")}`;
+      signDataUri = `data:image/png;base64,${fs
+        .readFileSync(path.resolve(__dirname, "../images/Disha Sign.png"))
+        .toString("base64")}`;
     } catch (e) {}
 
-    const { patient, doctor, startDate, endDate } = req.query;
+    // const { patient, doctor, startDate, endDate } = req.query;
+    const { patient, doctor, startDate, endDate, patientFormId } = req.query;
 
-    if (!patient || !doctor) {
+    // if (!patient || !doctor) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Patient and doctor are required",
+    //   });
+    // }
+
+    if (!patientFormId && (!patient || !doctor)) {
       return res.status(400).json({
         success: false,
-        message: "Patient and doctor are required",
+        message: "Either patientFormId OR patient & doctor are required",
       });
     }
 
     /* ---------------- MATCH QUERY ---------------- */
+    // let matchQuery = {
+    //   patientId: new mongoose.Types.ObjectId(patient),
+    //   doctorId: new mongoose.Types.ObjectId(doctor),
+    //   isDeleted: false,
+    // };
+
+    // if (startDate && endDate) {
+    //   matchQuery.appointmentDate = {
+    //     $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
+    //     $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
+    //   };
+    // }
+
     let matchQuery = {
-      patientId: new mongoose.Types.ObjectId(patient),
-      doctorId: new mongoose.Types.ObjectId(doctor),
       isDeleted: false,
     };
 
-    if (startDate && endDate) {
-      matchQuery.appointmentDate = {
-        $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
-        $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
-      };
+    // ✅ New flow: direct by patientFormId
+    if (patientFormId) {
+      matchQuery.patientFormId = new mongoose.Types.ObjectId(patientFormId);
+    }
+    // ✅ Old flow: patient + doctor (+ date)
+    else {
+      matchQuery.patientId = new mongoose.Types.ObjectId(patient);
+      matchQuery.doctorId = new mongoose.Types.ObjectId(doctor);
+
+      if (startDate && endDate) {
+        matchQuery.appointmentDate = {
+          $gte: moment(startDate, "DD/MM/YYYY").startOf("day").toDate(),
+          $lte: moment(endDate, "DD/MM/YYYY").endOf("day").toDate(),
+        };
+      }
     }
 
     /* ---------------- AGGREGATION ---------------- */
@@ -3415,38 +3518,20 @@ exports.generatePrescription = async (req, res) => {
           ],
           margin: [-60, 10, 0, 0],
         },
-        {
-          alignment: "right",
+        signDataUri && {
           columns: [
             {},
-            {},
             {
-              text: [
-                { text: "Signature", bold: true },
-                { text: " :- ", bold: true },
-              ],
-            },
-            {
-              stack: [
-                { text: "", margin: [0, 0, 0, 2], alignment: "center" },
-                {
-                  canvas: [
-                    {
-                      type: "line",
-                      x1: 0,
-                      y1: 15,
-                      x2: 150,
-                      y2: 15,
-                      lineWidth: 0.5,
-                    },
-                  ],
-                  margin: [0, 0, 0, 0],
-                },
-              ],
-              pageBreak: "avoid",
+              image: signDataUri,
+              width: 120,
+              margin: [0, 30, 0, 0],
             },
           ],
-          margin: [-60, 10, 0, 0],
+        },
+        {
+          text: "Signature",
+          alignment: "right",
+          margin: [0, 8, 0, 0],
         },
       ],
       styles: {
@@ -3559,10 +3644,14 @@ exports.getAppointmentsWithTime = async (req, res) => {
     //   .sort({ appointmentDate: -1 });
 
     const doctorId = req.user.doctorId;
+    const loggedUserClinicId = req.user.clinicId;
 
     const findObject = { docApproval: "pending", isDeleted: false };
 
-    if (doctorId) {
+    if (req.user.role === "A" && loggedUserClinicId) {
+      findObject.clinicId = loggedUserClinicId;
+    }
+    if (req.user.role === "D" && doctorId) {
       findObject.doctorId = doctorId;
     }
 
@@ -4163,6 +4252,8 @@ exports.createAppointmentWithSlot = async (req, res) => {
     const PatientForm = require("../models/patientform");
     const Doctor = require("../models/doctor");
 
+    const doctorData = await Doctor.findById(doctorId);
+
     /* --------------------------------
        PATIENT RESOLUTION (NO NULL)
     --------------------------------- */
@@ -4188,6 +4279,7 @@ exports.createAppointmentWithSlot = async (req, res) => {
           city: normalize(patientData.city),
           state: normalize(patientData.state),
           area: normalize(patientData.area),
+          clinicId: doctorData.clinicId,
         });
 
         finalPatientId = newPatient._id;
@@ -4201,9 +4293,9 @@ exports.createAppointmentWithSlot = async (req, res) => {
     /* --------------------------------
        PATIENT FORM (ALWAYS CREATED)
     --------------------------------- */
-    const doctorData = await Doctor.findById(doctorId);
 
     const newPatientForm = await PatientForm.create({
+      clinicId: doctorData.clinicId,
       doctor: doctorData && {
         _id: doctorData._id,
         name: doctorData.name,
@@ -4230,6 +4322,7 @@ exports.createAppointmentWithSlot = async (req, res) => {
     --------------------------------- */
     const newAppointment = await Appointment.create({
       doctorId,
+      clinicId: doctorData.clinicId,
       patientId: finalPatientId,
       patientFormId: newPatientForm._id,
       appointmentDate: new Date(appointmentDate),

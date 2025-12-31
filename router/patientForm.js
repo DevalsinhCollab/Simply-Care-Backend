@@ -1,9 +1,10 @@
 const express = require("express");
 const { addPatientForm, getPatientsForm, updatePatientForm, deletePatientForm, generateReport, generateCertificate, generateReceipt, generatePrescription, getPatientsFormById, assessmentForm, generateAssessment } = require("../controller/patientForm");
+const verifyToken = require("../middleware/verifyToken");
 const router = express.Router();
 
 router.post("/addpatientform", addPatientForm);
-router.get("/getpatientsform", getPatientsForm);
+router.get("/getpatientsform", verifyToken ,getPatientsForm);
 router.put("/updatepatientform/:id", updatePatientForm);
 router.put("/deletepatientform/:id", deletePatientForm);
 router.get("/generatereport", generateReport);

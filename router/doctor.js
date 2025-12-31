@@ -5,6 +5,7 @@ const {
   updateDoctor,
   deleteDoctor,
   searchDoctors,
+  getDoctorsByClinic,
 } = require("../controller/doctor");
 const verifyToken = require("../middleware/verifyToken");
 
@@ -12,6 +13,7 @@ const router = express.Router();
 
 router.post("/adddoctor", addDoctor);
 router.get("/getdoctors",verifyToken, getDoctors);
+router.get("/getDoctorsByClinic", getDoctorsByClinic);
 router.put("/updatedoctor/:id", updateDoctor);
 router.put("/deletedoctor/:id", deleteDoctor);
 router.get("/searchdoctors", verifyToken, searchDoctors);

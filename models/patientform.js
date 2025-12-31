@@ -268,6 +268,14 @@ const patientFormSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "clinic",
         },
+        estheticsQuestions: {
+            type: Object,
+            default: {},
+        },
+        dentalQuestions: {
+            type: Object,
+            default: {},
+        },
         isDeleted: {
             type: Boolean,
             default: false,

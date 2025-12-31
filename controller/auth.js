@@ -141,6 +141,8 @@ exports.login = async (req, res) => {
     user.keepMeLoggedIn = keepMeLoggedIn;
     await user.save();
 
+    console.log("Generated OTP:", otp); // Log the generated OTP to the console
+
     const mailOptions = {
       from: "collabsoftech@gmail.com",
       to: email,

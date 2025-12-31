@@ -32,7 +32,17 @@ exports.getPatients = async (req, res) => {
   try {
     const { page = 0, pageSize = 10, search } = req.query;
 
+    const loggedUserClinicId = req.user.clinicId;
     let findObject = { isDeleted: false };
+
+    console.log("User Clinic ID:", req.user);
+  
+
+    if (loggedUserClinicId) {
+      findObject.clinicId = loggedUserClinicId;
+    }
+
+    console.log(findObject, "findObject");
 
     if (search && search !== "") {
       findObject = {
@@ -46,10 +56,11 @@ exports.getPatients = async (req, res) => {
         ],
       };
     }
+    
 
     const skip = page * pageSize;
     const totalCount = await PatientSchema.countDocuments(findObject);
-    const doctors = await PatientSchema.find(findObject)
+    const doctors = await PatientSchema.find(findObject).populate('clinicId')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
@@ -152,8 +163,14 @@ exports.getPatientByPhone = async (req, res) => {
 exports.searchPatients = async (req, res) => {
   try {
     const { search } = req.query;
+    const loggedUserClinicId = req.user.clinicId;
 
     let findObject = { isDeleted: false };
+
+     
+    if(loggedUserClinicId){
+      findObject.clinicId = loggedUserClinicId
+    }
 
     if (search && search !== "") {
       findObject = {
