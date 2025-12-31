@@ -8,6 +8,47 @@ const { generateReceiptNumber } = require("../comman/comman");
 const PatientSchema = require("../models/patient");
 const Patient = require("../models/patient");
 
+// Helper: convert number to words (English)
+function numberToWords(num) {
+  if (num === 0) return "zero";
+  const a = [
+    "",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+  ];
+  const b = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+  function inWords(n) {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
+    if (n < 1000) return a[Math.floor(n / 100)] + " hundred" + (n % 100 ? " " + inWords(n % 100) : "");
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + " thousand" + (n % 1000 ? " " + inWords(n % 1000) : "");
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " lakh" + (n % 100000 ? " " + inWords(n % 100000) : "");
+    return inWords(Math.floor(n / 10000000)) + " crore" + (n % 10000000 ? " " + inWords(n % 10000000) : "");
+  }
+
+  const integerPart = Math.floor(Math.abs(num));
+  const words = inWords(integerPart);
+  return num < 0 ? "minus " + words : words;
+}
+
 // exports.addPatientForm = async (req, res) => {
 //     try {
 //         const patientData = await PatientFormSchema.create(req.body);
@@ -705,6 +746,13 @@ exports.generateReport = async (req, res) => {
           layout: "noBorders",
           margin: [0, 30, 0, 0],
         },
+        {
+          text: [
+            { text: "Amount (in words): ", bold: true },
+            `${numberToWords(Math.round(patientData.totalAmount || 0))} only`,
+          ],
+          margin: [0, 10, 0, 0],
+        },
       ],
       styles: {
         header: { fontSize: 14, margin: [0, 10, 0, 0] },
@@ -1184,6 +1232,13 @@ exports.generateReceipt = async (req, res) => {
           },
           layout: "noBorders",
           margin: [0, 30, 0, 0],
+        },
+        {
+          text: [
+            { text: "Amount (in words): ", bold: true },
+            `${numberToWords(Math.round(patientData.totalAmount || 0))} only`,
+          ],
+          margin: [0, 10, 0, 0],
         },
         {
           text: [

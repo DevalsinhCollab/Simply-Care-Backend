@@ -3,6 +3,47 @@
 // const Appointment = require("../models/appointment");
 // const { formateDate } = require("../comman/comman");
 
+// Helper: convert number to words (English)
+function numberToWords(num) {
+  if (num === 0) return "zero";
+  const a = [
+    "",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+  ];
+  const b = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+
+  function inWords(n) {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "");
+    if (n < 1000) return a[Math.floor(n / 100)] + " hundred" + (n % 100 ? " " + inWords(n % 100) : "");
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + " thousand" + (n % 1000 ? " " + inWords(n % 1000) : "");
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " lakh" + (n % 100000 ? " " + inWords(n % 100000) : "");
+    return inWords(Math.floor(n / 10000000)) + " crore" + (n % 10000000 ? " " + inWords(n % 10000000) : "");
+  }
+
+  const integerPart = Math.floor(Math.abs(num));
+  const words = inWords(integerPart);
+  return num < 0 ? "minus " + words : words;
+}
+
 // exports.addAppointment = async (req, res) => {
 //   try {
 //     const {
@@ -1129,19 +1170,19 @@ exports.generateReport = async (req, res) => {
           //   ],
           // },
           assessmentFee: {
-  $cond: [
-    { $eq: ["$patientForm.payment", "FOC"] },
-    0,
-    {
-      $convert: {
-        input: "$patientForm.payment",
-        to: "double",
-        onError: 0, // 👈 handles "" or invalid values
-        onNull: 0,  // 👈 handles null / missing
-      },
-    },
-  ],
-},
+            $cond: [
+              { $eq: ["$patientForm.payment", "FOC"] },
+              0,
+              {
+                $convert: {
+                  input: "$patientForm.payment",
+                  to: "double",
+                  onError: 0, // 👈 handles "" or invalid values
+                  onNull: 0, // 👈 handles null / missing
+                },
+              },
+            ],
+          },
 
           treatmentDate: "$patientForm.date",
           sessions: 1,
@@ -1243,6 +1284,7 @@ exports.generateReport = async (req, res) => {
       {},
       {},
     ]);
+    const finalTotal = report.assessmentFee + sessionTotal;
 
     /* ---------------- PDF ---------------- */
     const docDefinition = {
@@ -1386,6 +1428,13 @@ exports.generateReport = async (req, res) => {
           },
 
           margin: [0, 10, 0, 0], // space before table
+        },
+        {
+          text: [
+            { text: "Amount (in words): ", bold: true },
+            `${numberToWords(Math.round(finalTotal || 0))} only`,
+          ],
+          margin: [0, 10, 0, 0],
         },
       ],
     };
@@ -2104,6 +2153,10 @@ exports.generateReceipt = async (req, res) => {
 
     const receiptNumber = await generateReceiptNumber();
 
+    const grandTotal =
+      parsePayment(lastRecord?.patientForm?.payment) +
+      (lastRecord?.sessions?.reduce((sum, s) => sum + parsePayment(s.payment), 0) || 0);
+
     const docDefinition = {
       content: [
         {
@@ -2278,6 +2331,13 @@ exports.generateReceipt = async (req, res) => {
           },
           layout: "noBorders",
           margin: [0, 20, 0, 0],
+        },
+        {
+          text: [
+            { text: "Amount (in words): ", bold: true },
+            `${numberToWords(Math.round(grandTotal || 0))} only`,
+          ],
+          margin: [0, 10, 0, 0],
         },
         {
           text: "Payment received at Eraya Health Care for the given treatment. If you have any questions concerning this invoice contact Eraya Health Care",
