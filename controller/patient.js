@@ -1,3 +1,4 @@
+const Clinic = require("../models/clinic");
 const PatientSchema = require("../models/patient");
 const PatientFormSchema = require("../models/patientform");
 
@@ -8,12 +9,10 @@ exports.addPatient = async (req, res) => {
     const patient = await PatientSchema.findOne({ phone });
 
     if (patient) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Patient already exists with this phone",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Patient already exists with this phone",
+      });
     }
 
     const patientData = await PatientSchema.create(req.body);
@@ -36,7 +35,6 @@ exports.getPatients = async (req, res) => {
     let findObject = { isDeleted: false };
 
     console.log("User Clinic ID:", req.user);
-  
 
     if (loggedUserClinicId) {
       findObject.clinicId = loggedUserClinicId;
@@ -56,11 +54,11 @@ exports.getPatients = async (req, res) => {
         ],
       };
     }
-    
 
     const skip = page * pageSize;
     const totalCount = await PatientSchema.countDocuments(findObject);
-    const doctors = await PatientSchema.find(findObject).populate('clinicId')
+    const doctors = await PatientSchema.find(findObject)
+      .populate("clinicId")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
@@ -130,15 +128,24 @@ exports.deletePatient = async (req, res) => {
 
 exports.getPatientByPhone = async (req, res) => {
   try {
-    const { phone } = req.query;
+    const { phone, clinicName } = req.query;
 
-    if (!phone) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Phone number is required" });
+    filter = { isDeleted: false, phone: phone };
+
+    if (!phone || !clinicName) {
+      return res.status(400).json({ found: false });
     }
 
-    const patient = await PatientSchema.findOne({ phone, isDeleted: false });
+    const clinic = await Clinic.findOne({ name: clinicName });
+    if (!clinic) {
+      return res.json({ found: false });
+    }
+
+    if (clinic) {
+      filter.clinicId = clinic._id;
+    }
+
+    const patient = await PatientSchema.findOne(filter).lean().exec();
 
     if (!patient) {
       return res.status(200).json({
@@ -167,9 +174,8 @@ exports.searchPatients = async (req, res) => {
 
     let findObject = { isDeleted: false };
 
-     
-    if(loggedUserClinicId){
-      findObject.clinicId = loggedUserClinicId
+    if (loggedUserClinicId) {
+      findObject.clinicId = loggedUserClinicId;
     }
 
     if (search && search !== "") {

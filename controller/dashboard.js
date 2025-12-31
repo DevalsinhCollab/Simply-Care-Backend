@@ -122,17 +122,14 @@ const moment = require("moment");
 exports.dashboardCount = async (req, res) => {
   try {
     
-      const clinicId = new mongoose.Types.ObjectId(req.user.clinicId);
-      
       const findFilter = { isDeleted: false };
-        if (clinicId) {
-            findFilter.clinicId = clinicId;
-        }
+    if (req.user?.clinicId) {
+      findFilter.clinicId = new mongoose.Types.ObjectId(req.user.clinicId);
+    }
     // ================= COUNTS =================
     const patientCount = await PatientSchema.countDocuments(findFilter);
 
     const doctorCount = await DoctorSchema.countDocuments(findFilter);
-    console.log("CLINIC ID DASHBOARD 👉", clinicId);
 
     const appointmentCount = await Appointment.countDocuments(findFilter);
 

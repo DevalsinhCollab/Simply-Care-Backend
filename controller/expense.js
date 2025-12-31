@@ -330,20 +330,18 @@ exports.getExpenseStats = async (req, res) => {
   try {
     const { month, date } = req.query;
 
-    if (!req.user?.clinicId) {
-      return res.status(400).json({
-        success: false,
-        message: "ClinicId missing",
-      });
-    }
+    
 
     const clinicId = new mongoose.Types.ObjectId(req.user.clinicId);
 
     // ================= BASE FILTER =================
     const filter = {
       isDeleted: false,
-      clinicId,
     };
+
+    if(clinicId){
+      filter.clinicId = clinicId;
+    }
 
     // ================= MONTH FILTER =================
     // format: MM-YYYY
