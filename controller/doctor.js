@@ -25,6 +25,7 @@ exports.addDoctor = async (req, res) => {
       phone: phone,
       role: "D",
       doctorId: doctorData._id,
+      clinicId: req.body.clinicId,
     });
 
     return res.status(200).json({
@@ -127,7 +128,7 @@ exports.updateDoctor = async (req, res) => {
     // Update user record with same email
     await User.updateOne(
       { email: email },
-      { name: name, phone: phone, doctorId: id }
+      { name: name, phone: phone, doctorId: id , clinicId: req.body.clinicId}
     );
 
     await PatientFormSchema.updateMany(
