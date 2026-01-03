@@ -8,6 +8,114 @@ const { generateReceiptNumber } = require("../comman/comman");
 const PatientSchema = require("../models/patient");
 const Patient = require("../models/patient");
 
+// --- Helper: map legacy root-level physio/dental/esthetic fields into `formData` ---
+const PHYSIO_KEYS = [
+  "flex",
+  "abd",
+  "extension",
+  "rotation",
+  "spasm",
+  "stiffness",
+  "tenderness",
+  "effusion",
+  "mmt",
+  "cc",
+  "history",
+  "examinationComment",
+  "nrs",
+  "dosage1",
+  "dosage2",
+  "dosage3",
+  "dosage4",
+  "dosage5",
+  "dosage6",
+  "joint",
+  "treatment",
+  "numOfSessions",
+  "prescribeMedicine",
+  "description",
+];
+
+const DENTAL_KEYS = ["toothNumber", "complaint", "gumCondition", "xrayRequired"];
+const ESTHETIC_KEYS = ["skinType", "allergies", "procedureType"];
+
+function buildFormDataFromBody(formType, body) {
+  // If client already supplied formData, prefer it
+  if (body.formData && typeof body.formData === "object") {
+    return body.formData;
+  }
+
+  const out = {};
+  if (!formType || formType === "PHYSIO") {
+    PHYSIO_KEYS.forEach((k) => {
+      if (body[k] !== undefined) out[k] = body[k];
+    });
+  }
+
+  if (formType === "DENTAL") {
+    DENTAL_KEYS.forEach((k) => {
+      if (body[k] !== undefined) out[k] = body[k];
+    });
+    // also legacy `dentalQuestions` object
+    if (body.dentalQuestions) out.dentalQuestions = body.dentalQuestions;
+  }
+
+  if (formType === "ESTHETIC") {
+    ESTHETIC_KEYS.forEach((k) => {
+      if (body[k] !== undefined) out[k] = body[k];
+    });
+    if (body.estheticsQuestions) out.estheticsQuestions = body.estheticsQuestions;
+  }
+
+  // If no explicit type and there are dental/esthetic keys present, copy them too
+  DENTAL_KEYS.forEach((k) => {
+    if (body[k] !== undefined) out[k] = body[k];
+  });
+  ESTHETIC_KEYS.forEach((k) => {
+    if (body[k] !== undefined) out[k] = body[k];
+  });
+
+  return out;
+}
+
+function normalizeLegacyRecordToFormData(record) {
+  if (!record) return record;
+
+  // If already has formData and non-empty, keep it
+  if (record.formData && Object.keys(record.formData || {}).length > 0) return record;
+
+  // Build from legacy root fields (do not persist)
+  const formData = {};
+  let hasLegacy = false;
+
+  PHYSIO_KEYS.forEach((k) => {
+    if (record[k] !== undefined) {
+      formData[k] = record[k];
+      delete record[k];
+      hasLegacy = true;
+    }
+  });
+
+  if (record.dentalQuestions) {
+    formData.dentalQuestions = record.dentalQuestions;
+    delete record.dentalQuestions;
+    hasLegacy = true;
+  }
+
+  if (record.estheticsQuestions) {
+    formData.estheticsQuestions = record.estheticsQuestions;
+    delete record.estheticsQuestions;
+    hasLegacy = true;
+  }
+
+  if (hasLegacy) {
+    record.formData = formData;
+    record.formType = record.formType || "PHYSIO";
+  }
+
+  return record;
+}
+
 // Helper: convert number to words (English)
 function numberToWords(num) {
   if (num === 0) return "zero";
@@ -111,7 +219,10 @@ exports.addPatientForm = async (req, res) => {
     }
 
 
-    // 🟢 Now prepare final payload
+    // 🟢 Now prepare final payload: keep only common root fields and move speciality fields into `formData`
+    const incomingFormType = (otherFields.formType || otherFields.type || "PHYSIO").toUpperCase();
+    const builtFormData = buildFormDataFromBody(incomingFormType, { ...otherFields, ...req.body });
+
     const payload = {
       patient: {
         _id: finalPatient._id,
@@ -130,16 +241,17 @@ exports.addPatientForm = async (req, res) => {
       referenceDoctor: referenceDoctor
         ? { _id: referenceDoctor.value, name: referenceDoctor.label }
         : null,
-      ...otherFields,
+      clinicId: otherFields.clinicId || req.body.clinicId || null,
+      payment: otherFields.payment || req.body.payment || null,
+      paymentType: otherFields.paymentType || req.body.paymentType || null,
+      prescriptions: otherFields.prescriptions || req.body.prescriptions || [],
+      formType: incomingFormType,
+      formData: builtFormData,
     };
 
     const patientForm = await PatientFormSchema.create(payload);
 
-    return res.status(200).json({
-      success: true,
-      message: "Added Successfully",
-      data: patientForm,
-    });
+    return res.status(200).json({ success: true, message: "Added Successfully", data: patientForm });
   } catch (error) {
     console.log(error);
     return res.status(400).json({ success: false, message: error.message });
@@ -287,7 +399,10 @@ exports.getPatientsForm = async (req, res) => {
       .lean()
       .exec();
 
-    return res.status(200).json({ data: doctors, totalCount, success: true });
+    // Normalize legacy records into `formData` for backward compatibility (non-persistent)
+    const normalized = doctors.map((d) => normalizeLegacyRecordToFormData(d));
+
+    return res.status(200).json({ data: normalized, totalCount, success: true });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -314,9 +429,10 @@ exports.getPatientHistory = async (req, res) => {
       .lean()
       .exec();
 
-    const totalCount = forms.length;
+    const normalized = forms.map((f) => normalizeLegacyRecordToFormData(f));
+    const totalCount = normalized.length;
 
-    return res.status(200).json({ success: true, data: forms, totalCount });
+    return res.status(200).json({ success: true, data: normalized, totalCount });
   } catch (error) {
     console.error('getPatientHistory error', error);
     return res.status(400).json({ success: false, message: error.message });
@@ -401,18 +517,57 @@ exports.updatePatientForm = async (req, res) => {
         delete patientUpdateData[key]
     );
 
-    await Patient.findByIdAndUpdate(patient._id, {
-      $set: patientUpdateData,
-    });
+    const updatedPatient = await Patient.findByIdAndUpdate(
+  patient._id,
+  { $set: patientUpdateData },
+  { new: true } // 🔥 THIS IS THE KEY
+);
+
 
     // 5️⃣ Update PatientForm
+    // Build a safe update payload: keep only common root fields and move speciality fields into `formData`
+    const incomingFormType = (formData.formType || formData.type || "PHYSIO").toUpperCase();
+    const newFormData = buildFormDataFromBody(incomingFormType, formData);
+
+    // Build explicit, schema-safe $set payload
+    const safePayload = {
+   patient: {
+  _id: updatedPatient._id,
+  name: updatedPatient.name,
+  phone: updatedPatient.phone,
+  age: updatedPatient.age,
+  address: updatedPatient.address,
+  pincode: updatedPatient.pincode,
+  city: updatedPatient.city,
+  state: updatedPatient.state,
+  occupation: updatedPatient.occupation,
+  area: updatedPatient.area,
+  gender: updatedPatient.gender,
+},
+
+      clinicId: formData.clinicId ?? undefined,
+      payment: formData.payment ?? undefined,
+      paymentType: formData.paymentType ?? undefined,
+      paymentOption: formData.paymentOption ?? undefined,
+      numOfSessions: formData.numOfSessions ?? undefined,
+      prescribeMedicine: formData.prescribeMedicine ?? undefined,
+      // prescriptions: conditional based on prescribeMedicine
+      prescriptions: formData.prescribeMedicine === 'yes' ? (formData.prescriptions || []) : [],
+      doctor: formData.doctor ? { _id: formData.doctor.value || formData.doctor._id, name: formData.doctor.label || formData.doctor.name } : undefined,
+      referenceDoctor: formData.referenceDoctor
+        ? { _id: formData.referenceDoctor.value || formData.referenceDoctor._id, name: formData.referenceDoctor.label || formData.referenceDoctor.name }
+        : undefined,
+      formType: incomingFormType,
+      formData: newFormData,
+    };
+
     const updatedForm = await PatientFormSchema.findByIdAndUpdate(
       id,
+      { $set: safePayload },
       {
-        ...formData,
-        patientId: patient._id, // link for future
-      },
-      { new: true, runValidators: true }
+        new: true,
+        runValidators: true,
+      }
     );
 
     if (!updatedForm) {
@@ -1717,7 +1872,9 @@ exports.getPatientsFormById = async (req, res) => {
       .lean()
       .exec();
 
-    return res.status(200).json({ data: patientFormData, success: true });
+    const normalized = normalizeLegacyRecordToFormData(patientFormData);
+
+    return res.status(200).json({ data: normalized, success: true });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
   }
@@ -1742,11 +1899,24 @@ exports.assessmentForm = async (req, res) => {
       address: address,
     };
 
-    const patientFormData = await PatientFormSchema.findByIdAndUpdate(
-      id,
-      { ...req.body, patient: { _id: patientId, ...patient } },
-      { new: true }
-    );
+    // Normalize incoming body: keep common roots and put speciality fields into `formData`
+    const incomingFormType = (req.body.formType || req.body.type || "PHYSIO").toUpperCase();
+    const builtFormData = buildFormDataFromBody(incomingFormType, req.body);
+
+    const updateObj = {
+      patient: { _id: patientId, ...patient },
+      clinicId: req.body.clinicId || undefined,
+      payment: req.body.payment || undefined,
+      paymentType: req.body.paymentType || undefined,
+      prescriptions: req.body.prescriptions || undefined,
+      referenceDoctor: req.body.referenceDoctor
+        ? { _id: req.body.referenceDoctor.value, name: req.body.referenceDoctor.label }
+        : undefined,
+      formType: incomingFormType,
+      formData: builtFormData,
+    };
+
+    const patientFormData = await PatientFormSchema.findByIdAndUpdate(id, updateObj, { new: true });
     await PatientSchema.findByIdAndUpdate(
       patientId,
       { ...patient },
@@ -1778,7 +1948,8 @@ exports.generateAssessment = async (req, res) => {
 
     const { id } = req.query;
 
-    const patientFormData = await PatientFormSchema.findById(id);
+    const patientFormDataRaw = await PatientFormSchema.findById(id).lean();
+    const patientFormData = normalizeLegacyRecordToFormData(patientFormDataRaw);
 
     const docDefinition = {
       content: [
@@ -2109,7 +2280,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.flex,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.flex) || "",
                       bold: true,
                       color: "black",
                       lineHeight: 1.5,
@@ -2134,7 +2305,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.abd,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.abd) || "",
                       bold: true,
                       color: "black",
                       fillColor: "#e8f4f4",
@@ -2204,7 +2375,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.spasm,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.spasm) || "",
                       bold: true,
                       color: "black",
                       lineHeight: 1.5,
@@ -2229,7 +2400,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.stiffness,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.stiffness) || "",
                       bold: true,
                       color: "black",
                       fillColor: "#e8f4f4",
@@ -2254,7 +2425,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.tenderness,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.tenderness) || "",
                       bold: true,
                       color: "black",
                       lineHeight: 1.5,
@@ -2279,7 +2450,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.effusion,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.effusion) || "",
                       bold: true,
                       color: "black",
                       fillColor: "#e8f4f4",
@@ -2339,7 +2510,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.mmt,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.mmt) || "",
                       bold: true,
                       color: "black",
                       lineHeight: 1.5,
@@ -2364,7 +2535,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.cc,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.cc) || "",
                       bold: true,
                       color: "black",
                       fillColor: "#e8f4f4",
@@ -2389,7 +2560,7 @@ exports.generateAssessment = async (req, res) => {
                       ],
                     },
                     {
-                      text: patientFormData && patientFormData.history,
+                      text: (patientFormData && patientFormData.formData && patientFormData.formData.history) || "",
                       bold: true,
                       color: "black",
                       lineHeight: 1.5,
@@ -2416,7 +2587,7 @@ exports.generateAssessment = async (req, res) => {
                     {
                       text:
                         (patientFormData &&
-                          patientFormData.examinationComment) ||
+                          (patientFormData && patientFormData.formData && patientFormData.formData.examinationComment)) ||
                         "",
                       bold: true,
                       color: "black",

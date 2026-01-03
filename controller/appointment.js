@@ -242,6 +242,7 @@ const Doctor = require("../models/doctor");
 const Patientform = require("../models/patientform");
 const appointment = require("../models/appointment");
 const { brotliCompress } = require("zlib");
+const mapSpecialityToFormType = require("../utils/formTypeMapper");
 
 // ===========================
 // CREATE APPOINTMENT
@@ -1538,17 +1539,17 @@ exports.generateCertificate = async (req, res) => {
           margin: [0, 0, 0, 10],
         },
         {
-          text: `This letter is to certify that ${data.patientId.name} is suffering from ${data.patientFormId.treatment}.`,
+          text: `This letter is to certify that ${data.patientId.name} is suffering from ${data.patientFormId.formData.treatment}.`,
           style: "paragraph",
           margin: [0, 10, 0, 10],
         },
         {
           text: `He/She was diagnosed with ${
-            data.patientFormId.treatment
+            data.patientFormId.formData.treatment
           } on ${moment(data.date).format(
             "DD/MM/YYYY"
           )} and is having difficulty in performing few daily living activities. As per his/her ${
-            data.patientFormId.treatment
+            data.patientFormId.formData.treatment
           } he/she shall require elaser calmative therapy and advance physiotherapy exercise for approx. 30 sessions depending on the prognosis.`,
           style: "paragraph",
           margin: [0, 0, 0, 10],
@@ -3735,6 +3736,8 @@ exports.getAppointmentsWithTime = async (req, res) => {
       .populate("patientId")
       .sort({ appointmentDate: -1 });
 
+    console.log("Appointments with time slots:", appointments.length);
+
     return res.status(200).json({
       success: true,
       data: appointments,
@@ -3985,6 +3988,8 @@ exports.getAvailableSlots = async (req, res) => {
 // ===========================
 // CREATE APPOINTMENT WITH SLOT
 // ===========================
+
+
 // exports.createAppointmentWithSlot = async (req, res) => {
 //   try {
 //     const {
@@ -3998,15 +4003,32 @@ exports.getAvailableSlots = async (req, res) => {
 //       patientData,
 //     } = req.body;
 
-//     // Validate required fields
-//     if (!doctorId || !patientId || !appointmentDate || !startTime || !endTime) {
+//     /* --------------------------------
+//        BASIC VALIDATION
+//     --------------------------------- */
+//     if (!doctorId || !appointmentDate || !startTime || !endTime) {
 //       return res.status(400).json({
 //         success: false,
 //         message: "Missing required fields",
 //       });
 //     }
 
-//     // Check if slot is already booked
+//     // Patient MUST exist or be creatable
+//     if (!patientId && !patientData?.phone) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "PatientId or patient phone is required",
+//       });
+//     }
+
+//     /* --------------------------------
+//        NORMALIZER (prevents enum errors)
+//     --------------------------------- */
+//     const normalize = (v) => (v === "" || v === undefined ? null : v);
+
+//     /* --------------------------------
+//        SLOT AVAILABILITY CHECK
+//     --------------------------------- */
 //     const existingAppointment = await Appointment.findOne({
 //       doctorId,
 //       appointmentDate: {
@@ -4026,96 +4048,97 @@ exports.getAvailableSlots = async (req, res) => {
 //       });
 //     }
 
+//     /* --------------------------------
+//        MODELS
+//     --------------------------------- */
 //     const Patient = require("../models/patient");
 //     const PatientForm = require("../models/patientform");
 //     const Doctor = require("../models/doctor");
 
-//     let finalPatientId = patientId;
-//     let patientFormId = null;
+//     const doctorData = await Doctor.findById(doctorId);
 
-//     // ✅ CASE 1: Check if patient already exists in Patient DB by phone
-//     if (patientData && patientData.phone) {
-//       const existingPatient = await Patient.findOne({
+//     /* --------------------------------
+//        PATIENT RESOLUTION (NO NULL)
+//     --------------------------------- */
+//     let finalPatientId = patientId;
+
+//     if (!finalPatientId && patientData?.phone) {
+//       let existingPatient = await Patient.findOne({
 //         phone: patientData.phone,
 //       });
 
 //       if (existingPatient) {
 //         finalPatientId = existingPatient._id;
-//         console.log("✅ Patient already exists in Patient DB:", finalPatientId);
 //       } else {
-//         // Create new patient in Patient DB
 //         const newPatient = await Patient.create({
-//           name: patientData.name || "",
-//           phone: patientData.phone || "",
-//           email: patientData.email || "",
-//           age: patientData.age || "",
-//           gender: patientData.gender || "",
-//           occupation: patientData.occupation || "",
-//           address: patientData.address || "",
-//           pincode: patientData.pincode || "",
-//           city: patientData.city || "",
-//           state: patientData.state || "",
-//           area: patientData.area || "",
+//           name: normalize(patientData.name),
+//           phone: patientData.phone,
+//           email: normalize(patientData.email),
+//           age: normalize(patientData.age),
+//           gender: normalize(patientData.gender), // enum-safe
+//           occupation: normalize(patientData.occupation),
+//           address: normalize(patientData.address),
+//           pincode: normalize(patientData.pincode),
+//           city: normalize(patientData.city),
+//           state: normalize(patientData.state),
+//           area: normalize(patientData.area),
+//           clinicId: doctorData.clinicId,
 //         });
+
 //         finalPatientId = newPatient._id;
-//         console.log("✅ New patient created in Patient DB:", finalPatientId);
-//       }
-
-//       // ✅ CASE 2: Check if PatientForm already exists with same phone AND name
-//       const existingPatientForm = await PatientForm.findOne({
-//         "patient.phone": patientData.phone,
-//         "patient.name": patientData.name,
-//       });
-
-//       if (!existingPatientForm) {
-//         // Create PatientForm only if it doesn't exist
-//         const doctorData = await Doctor.findById(doctorId);
-//         const newPatientForm = await PatientForm.create({
-//           patient: {
-//             _id: finalPatientId,
-//             name: patientData.name || "",
-//             phone: patientData.phone || "",
-//             age: patientData.age || "",
-//             gender: patientData.gender || "",
-//             occupation: patientData.occupation || "",
-//             address: patientData.address || "",
-//             pincode: patientData.pincode || "",
-//             city: patientData.city || "",
-//             state: patientData.state || "",
-//             area: patientData.area || "",
-//           },
-//           doctor: doctorData
-//             ? { _id: doctorData._id, name: doctorData.name }
-//             : null,
-//           // treatment: treatment || "",
-//           description: description || "",
-//         });
-//         patientFormId = newPatientForm._id;
-//         console.log("✅ New PatientForm created:", patientFormId);
-//       } else {
-//         // PatientForm already exists - use its ID
-//         patientFormId = existingPatientForm._id;
-//         console.log("✅ PatientForm already exists:", patientFormId);
 //       }
 //     }
 
-//     // Create new appointment with patientId and patientFormId
+//     if (!finalPatientId) {
+//       throw new Error("Patient creation failed");
+//     }
+
+//     /* --------------------------------
+//        PATIENT FORM (ALWAYS CREATED)
+//     --------------------------------- */
+
+//     const newPatientForm = await PatientForm.create({
+//       clinicId: doctorData.clinicId,
+//       doctor: doctorData && {
+//         _id: doctorData._id,
+//         name: doctorData.name,
+//       },
+//       patient: {
+//         _id: finalPatientId,
+//         name: normalize(patientData?.name),
+//         phone: normalize(patientData?.phone),
+//         age: normalize(patientData?.age),
+//         gender: normalize(patientData?.gender),
+//         occupation: normalize(patientData?.occupation),
+//         address: normalize(patientData?.address),
+//         pincode: normalize(patientData?.pincode),
+//         city: normalize(patientData?.city),
+//         state: normalize(patientData?.state),
+//         area: normalize(patientData?.area),
+//       },
+//       description: normalize(description),
+//       treatment: normalize(treatment),
+//     });
+
+//     /* --------------------------------
+//        APPOINTMENT CREATION
+//     --------------------------------- */
 //     const newAppointment = await Appointment.create({
 //       doctorId,
+//       clinicId: doctorData.clinicId,
 //       patientId: finalPatientId,
-//       patientFormId: patientFormId,
+//       patientFormId: newPatientForm._id,
 //       appointmentDate: new Date(appointmentDate),
 //       startTime,
 //       endTime,
-//       treatment,
-//       description: description || "",
-//       date: new Date(appointmentDate),
+//       // treatment: normalize(treatment),
+//       // description: normalize(description),
+//       // date: new Date(appointmentDate),
 //     });
 
-//     // Populate doctor and patient data
 //     const populatedAppointment = await Appointment.findById(newAppointment._id)
 //       .populate("doctorId", "name email phone docSpeciality")
-//       .populate("patientId", "name email phone")
+//       .populate("patientId", "name email phone gender")
 //       .populate("patientFormId");
 
 //     return res.status(201).json({
@@ -4142,6 +4165,7 @@ exports.getAvailableSlots = async (req, res) => {
 //       treatment,
 //       description,
 //       patientData,
+//       formData, // 🔥 dynamic form payload
 //     } = req.body;
 
 //     if (!doctorId || !appointmentDate || !startTime || !endTime) {
@@ -4151,7 +4175,44 @@ exports.getAvailableSlots = async (req, res) => {
 //       });
 //     }
 
-//     // Check slot availability
+//     if (!patientId && !patientData?.phone) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "PatientId or patient phone is required",
+//       });
+//     }
+
+//     const normalize = (v) => (v === "" || v === undefined ? null : v);
+
+//     /* --------------------------------
+//        MODELS
+//     --------------------------------- */
+//     const Patient = require("../models/patient");
+//     const PatientForm = require("../models/patientform");
+//     const Doctor = require("../models/doctor");
+//     const DoctorSpeciality = require("../models/doctorSpeciality");
+
+//     /* --------------------------------
+//        DOCTOR + SPECIALITY
+//     --------------------------------- */
+//     const doctorData = await Doctor.findById(doctorId).populate(
+//       "docSpeciality",
+//       "name"
+//     );
+
+//     if (!doctorData) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Doctor not found",
+//       });
+//     }
+
+//     const specialityName = doctorData.docSpeciality?.name;
+//     const formType = mapSpecialityToFormType(specialityName);
+
+//     /* --------------------------------
+//        SLOT CHECK
+//     --------------------------------- */
 //     const existingAppointment = await Appointment.findOne({
 //       doctorId,
 //       appointmentDate: {
@@ -4171,82 +4232,81 @@ exports.getAvailableSlots = async (req, res) => {
 //       });
 //     }
 
-//     const Patient = require("../models/patient");
-//     const PatientForm = require("../models/patientform");
-//     const Doctor = require("../models/doctor");
-
+//     /* --------------------------------
+//        PATIENT RESOLUTION
+//     --------------------------------- */
 //     let finalPatientId = patientId;
 
-//     // --------------------------------------------------------------------
-//     // 1️⃣ MATCH PATIENT BY PHONE → SAME LOGIC AS OLD PATIENT MODEL
-//     // --------------------------------------------------------------------
-//     if (patientData?.phone) {
-//       let existingPatient = await Patient.findOne({ phone: patientData.phone });
+//     if (!finalPatientId && patientData?.phone) {
+//       let existingPatient = await Patient.findOne({
+//         phone: patientData.phone,
+//       });
 
 //       if (existingPatient) {
 //         finalPatientId = existingPatient._id;
 //       } else {
 //         const newPatient = await Patient.create({
-//           name: patientData.name || "",
+//           name: normalize(patientData.name),
 //           phone: patientData.phone,
-//           email: patientData.email || "",
-//           age: patientData.age || "",
-//           gender: patientData.gender || "",
-//           occupation: patientData.occupation || "",
-//           address: patientData.address || "",
-//           pincode: patientData.pincode || "",
-//           city: patientData.city || "",
-//           state: patientData.state || "",
-//           area: patientData.area || "",
+//           email: normalize(patientData.email),
+//           age: normalize(patientData.age),
+//           gender: normalize(patientData.gender),
+//           occupation: normalize(patientData.occupation),
+//           address: normalize(patientData.address),
+//           pincode: normalize(patientData.pincode),
+//           city: normalize(patientData.city),
+//           state: normalize(patientData.state),
+//           area: normalize(patientData.area),
+//           clinicId: doctorData.clinicId,
 //         });
 
 //         finalPatientId = newPatient._id;
 //       }
 //     }
 
-//     // --------------------------------------------------------------------
-//     // 2️⃣ ALWAYS CREATE A NEW PATIENT FORM (NO MATCHING, NO REUSE)
-//     // --------------------------------------------------------------------
-//     const doctorData = await Doctor.findById(doctorId);
-
+//     /* --------------------------------
+//        PATIENT FORM (SPECIALITY BASED)
+//     --------------------------------- */
 //     const newPatientForm = await PatientForm.create({
-//       doctor: doctorData && { _id: doctorData._id, name: doctorData.name },
-//       patient: {
-//         _id: finalPatientId,
-//         name: patientData?.name || "",
-//         phone: patientData?.phone || "",
-//         age: patientData?.age,
-//         gender: patientData?.gender,
-//         occupation: patientData?.occupation,
-//         address: patientData?.address,
-//         pincode: patientData?.pincode,
-//         city: patientData?.city,
-//         state: patientData?.state,
-//         area: patientData?.area,
+//       clinicId: doctorData.clinicId,
+
+//       doctor: {
+//         _id: doctorData._id,
+//         name: doctorData.name,
+//         speciality: specialityName,
 //       },
 
-//       description: description || "",
-//       treatment: treatment || "",
+//       patient: {
+//         _id: finalPatientId,
+//         name: normalize(patientData?.name),
+//         phone: normalize(patientData?.phone),
+//         age: normalize(patientData?.age),
+//         gender: normalize(patientData?.gender),
+//       },
+
+//       formType,          // 🔥 AUTO from doctor speciality
+//       formData: formData || {},
+
+//       treatment: normalize(treatment),
+//       description: normalize(description),
 //     });
 
-//     // --------------------------------------------------------------------
-//     // 3️⃣ CREATE APPOINTMENT WITH NEW patientFormId
-//     // --------------------------------------------------------------------
+//     /* --------------------------------
+//        APPOINTMENT
+//     --------------------------------- */
 //     const newAppointment = await Appointment.create({
 //       doctorId,
+//       clinicId: doctorData.clinicId,
 //       patientId: finalPatientId,
 //       patientFormId: newPatientForm._id,
 //       appointmentDate: new Date(appointmentDate),
 //       startTime,
 //       endTime,
-//       treatment,
-//       description,
-//       date: new Date(appointmentDate),
 //     });
 
 //     const populatedAppointment = await Appointment.findById(newAppointment._id)
-//       .populate("doctorId", "name email phone docSpeciality")
-//       .populate("patientId", "name email phone")
+//       .populate("doctorId", "name phone docSpeciality")
+//       .populate("patientId", "name phone gender")
 //       .populate("patientFormId");
 
 //     return res.status(201).json({
@@ -4261,6 +4321,16 @@ exports.getAvailableSlots = async (req, res) => {
 //     });
 //   }
 // };
+
+// const Appointment = require("../models/appointment");
+const Patient = require("../models/patient");
+const PatientForm = require("../models/patientform");
+const { getEmptyFormData } = require("../utils/formTemplates");
+// const Doctor = require("../models/doctor");
+
+// const mapSpecialityToFormType = require("../utils/mapSpecialityToFormType");
+
+
 
 exports.createAppointmentWithSlot = async (req, res) => {
   try {
@@ -4275,9 +4345,6 @@ exports.createAppointmentWithSlot = async (req, res) => {
       patientData,
     } = req.body;
 
-    /* --------------------------------
-       BASIC VALIDATION
-    --------------------------------- */
     if (!doctorId || !appointmentDate || !startTime || !endTime) {
       return res.status(400).json({
         success: false,
@@ -4285,22 +4352,25 @@ exports.createAppointmentWithSlot = async (req, res) => {
       });
     }
 
-    // Patient MUST exist or be creatable
-    if (!patientId && !patientData?.phone) {
-      return res.status(400).json({
+    const normalize = (v) => (v === "" || v === undefined ? null : v);
+
+    /* ---------------- DOCTOR + SPECIALITY ---------------- */
+    const doctorData = await Doctor.findById(doctorId).populate(
+      "docSpeciality",
+      "name"
+    );
+
+    if (!doctorData) {
+      return res.status(404).json({
         success: false,
-        message: "PatientId or patient phone is required",
+        message: "Doctor not found",
       });
     }
 
-    /* --------------------------------
-       NORMALIZER (prevents enum errors)
-    --------------------------------- */
-    const normalize = (v) => (v === "" || v === undefined ? null : v);
+    const specialityName = doctorData.docSpeciality?.name;
+    const formType = mapSpecialityToFormType(specialityName);
 
-    /* --------------------------------
-       SLOT AVAILABILITY CHECK
-    --------------------------------- */
+    /* ---------------- SLOT CHECK ---------------- */
     const existingAppointment = await Appointment.findOne({
       doctorId,
       appointmentDate: {
@@ -4320,18 +4390,7 @@ exports.createAppointmentWithSlot = async (req, res) => {
       });
     }
 
-    /* --------------------------------
-       MODELS
-    --------------------------------- */
-    const Patient = require("../models/patient");
-    const PatientForm = require("../models/patientform");
-    const Doctor = require("../models/doctor");
-
-    const doctorData = await Doctor.findById(doctorId);
-
-    /* --------------------------------
-       PATIENT RESOLUTION (NO NULL)
-    --------------------------------- */
+    /* ---------------- PATIENT ---------------- */
     let finalPatientId = patientId;
 
     if (!finalPatientId && patientData?.phone) {
@@ -4345,15 +4404,9 @@ exports.createAppointmentWithSlot = async (req, res) => {
         const newPatient = await Patient.create({
           name: normalize(patientData.name),
           phone: patientData.phone,
-          email: normalize(patientData.email),
           age: normalize(patientData.age),
-          gender: normalize(patientData.gender), // enum-safe
-          occupation: normalize(patientData.occupation),
+          gender: normalize(patientData.gender),
           address: normalize(patientData.address),
-          pincode: normalize(patientData.pincode),
-          city: normalize(patientData.city),
-          state: normalize(patientData.state),
-          area: normalize(patientData.area),
           clinicId: doctorData.clinicId,
         });
 
@@ -4362,39 +4415,36 @@ exports.createAppointmentWithSlot = async (req, res) => {
     }
 
     if (!finalPatientId) {
-      throw new Error("Patient creation failed");
+      return res.status(400).json({
+        success: false,
+        message: "Patient creation failed",
+      });
     }
 
-    /* --------------------------------
-       PATIENT FORM (ALWAYS CREATED)
-    --------------------------------- */
-
+    /* ---------------- PATIENT FORM (EMPTY TEMPLATE) ---------------- */
     const newPatientForm = await PatientForm.create({
       clinicId: doctorData.clinicId,
-      doctor: doctorData && {
+
+      doctor: {
         _id: doctorData._id,
         name: doctorData.name,
       },
+
       patient: {
         _id: finalPatientId,
         name: normalize(patientData?.name),
         phone: normalize(patientData?.phone),
         age: normalize(patientData?.age),
         gender: normalize(patientData?.gender),
-        occupation: normalize(patientData?.occupation),
-        address: normalize(patientData?.address),
-        pincode: normalize(patientData?.pincode),
-        city: normalize(patientData?.city),
-        state: normalize(patientData?.state),
-        area: normalize(patientData?.area),
       },
-      description: normalize(description),
+
+      formType,                         // 🔥 FROM SPECIALITY
+      formData: getEmptyFormData(formType), // 🔥 ALL FIELDS NULL
       treatment: normalize(treatment),
+      description: normalize(description),
     });
 
-    /* --------------------------------
-       APPOINTMENT CREATION
-    --------------------------------- */
+    /* ---------------- APPOINTMENT ---------------- */
     const newAppointment = await Appointment.create({
       doctorId,
       clinicId: doctorData.clinicId,
@@ -4403,14 +4453,11 @@ exports.createAppointmentWithSlot = async (req, res) => {
       appointmentDate: new Date(appointmentDate),
       startTime,
       endTime,
-      // treatment: normalize(treatment),
-      // description: normalize(description),
-      // date: new Date(appointmentDate),
     });
 
     const populatedAppointment = await Appointment.findById(newAppointment._id)
-      .populate("doctorId", "name email phone docSpeciality")
-      .populate("patientId", "name email phone gender")
+      .populate("doctorId", "name phone docSpeciality")
+      .populate("patientId", "name phone gender")
       .populate("patientFormId");
 
     return res.status(201).json({

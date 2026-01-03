@@ -15,6 +15,8 @@ exports.getAllMedicines = async (req, res) => {
       findObject.clinicId = loggedUserClinicId;
     }
 
+    console.log("Finding medicines with filter:", findObject);
+
     const medicines = await Medicine.find(findObject).populate("clinicId").sort({
       createdAt: -1,
     });
